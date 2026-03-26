@@ -159,6 +159,15 @@ export default function CourseDetailPage({ courseId }: Props) {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent('brainjam:search', { detail: { courseId: course.id, courseName: course.name } }))}
+                className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"
+                title="Search this course (⌘K)"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <circle cx="11" cy="11" r="7" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+                </svg>
+              </button>
               <Link
                 to="/"
                 className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"

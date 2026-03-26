@@ -46,6 +46,12 @@ export type ExamQuestion =
   | { type: 'numeric'; question: string; answer: string; explanation: string }
   | { type: 'short_answer'; question: string; answer: string }
 
+export interface SearchResults {
+  topics: { tag: string; course_id: number; course_name: string; lecture_count: number }[]
+  lectures: { id: number; title: string; summary: string; course_id: number; course_name: string; tags: string[] }[]
+  flashcards: { id: number; front: string; back: string; lecture_id: number; lecture_title: string; course_id: number; course_name: string }[]
+}
+
 export interface TopicData {
   tag: string
   course_name: string
@@ -90,6 +96,8 @@ export const auth = {
 }
 
 export const api = {
+  search: (q: string, courseId?: number) =>
+    req<SearchResults>(`/api/search/?q=${encodeURIComponent(q)}${courseId ? `&course_id=${courseId}` : ''}`),
   courses: {
     list: () => req<CourseListItem[]>('/api/courses/'),
     create: (body: { name: string; description?: string; color?: string }) =>

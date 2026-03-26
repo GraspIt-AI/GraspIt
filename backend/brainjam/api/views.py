@@ -561,6 +561,82 @@ def course_exam(request, pk):
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+def search(request):
+    q = (request.query_params.get('q') or '').strip()
+    if len(q) < 2:
+        return Response({'topics': [], 'lectures': [], 'flashcards': []})
+
+    q_lower = q.lower()
+
+    lecture_qs = Lecture.objects.filter(course__user=request.user).select_related('course')
+    try:
+        course_id = int(request.query_params.get('course_id') or 0)
+        if course_id:
+            lecture_qs = lecture_qs.filter(course_id=course_id)
+    except (ValueError, TypeError):
+        pass
+
+    matched_lectures = []
+    matched_tags: dict = {}
+
+    for lec in lecture_qs:
+        for tag in (lec.tags or []):
+            if q_lower in tag.lower():
+                key = (lec.course_id, tag)
+                if key not in matched_tags:
+                    matched_tags[key] = {
+                        'tag': tag,
+                        'course_id': lec.course_id,
+                        'course_name': lec.course.name,
+                        'lecture_count': 0,
+                    }
+                matched_tags[key]['lecture_count'] += 1
+
+        if (
+            q_lower in lec.title.lower()
+            or q_lower in (lec.summary or '').lower()
+            or q_lower in (lec.notes or '').lower()
+            or any(q_lower in tag.lower() for tag in (lec.tags or []))
+        ):
+            matched_lectures.append({
+                'id': lec.id,
+                'title': lec.title,
+                'summary': lec.summary or '',
+                'course_id': lec.course_id,
+                'course_name': lec.course.name,
+                'tags': lec.tags or [],
+            })
+
+    flashcard_qs = Flashcard.objects.filter(
+        lecture__course__user=request.user
+    ).select_related('lecture__course')
+    if course_id:
+        flashcard_qs = flashcard_qs.filter(lecture__course_id=course_id)
+
+    matched_flashcards = []
+    for fc in flashcard_qs:
+        if q_lower in fc.front.lower() or q_lower in fc.back.lower():
+            matched_flashcards.append({
+                'id': fc.id,
+                'front': fc.front,
+                'back': fc.back,
+                'lecture_id': fc.lecture_id,
+                'lecture_title': fc.lecture.title,
+                'course_id': fc.lecture.course_id,
+                'course_name': fc.lecture.course.name,
+            })
+        if len(matched_flashcards) >= 5:
+            break
+
+    return Response({
+        'topics': list(matched_tags.values())[:6],
+        'lectures': matched_lectures[:6],
+        'flashcards': matched_flashcards[:5],
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def course_topic(request, pk):
     course = get_object_or_404(Course, pk=pk, user=request.user)
     tag = (request.query_params.get('tag') or '').strip()

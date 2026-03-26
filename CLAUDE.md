@@ -49,12 +49,14 @@ BrainJam/
 │   │   │   ├── login.tsx      ← LoginPage
 │   │   │   └── register.tsx   ← RegisterPage
 │   │   └── components/
-│   │       ├── AudioRecorder.tsx   ← Record mode + Upload audio file mode toggle
-│   │       ├── PhotoCapture.tsx    ← Take photo (camera) + Upload photo (gallery) buttons
-│   │       ├── ContextFiles.tsx    ← Arbitrary file uploads (PDF, DOCX, PPTX, TXT, images…)
-│   │       ├── UserMenu.tsx        ← Avatar dropdown with username, email, sign out
+│   │       ├── AudioRecorder.tsx      ← Record mode + Upload audio file mode toggle
+│   │       ├── AuthLayoutWrapper.tsx  ← Auth layout wrapper; mounts SearchModal + Cmd+K listener
+│   │       ├── ContextFiles.tsx       ← Arbitrary file uploads (PDF, DOCX, PPTX, TXT, images…)
 │   │       ├── FlashCard.tsx
-│   │       └── NotesViewer.tsx
+│   │       ├── NotesViewer.tsx
+│   │       ├── PhotoCapture.tsx       ← Take photo (camera) + Upload photo (gallery) buttons
+│   │       ├── SearchModal.tsx        ← Command-palette search overlay; supports global + course-scoped search
+│   │       └── UserMenu.tsx           ← Avatar dropdown with username, email, sign out
 │   └── package.json
 └── backend/
     └── brainjam/
@@ -153,6 +155,7 @@ GET               /api/courses/:id/topic/         topic data (notes + flashcards
 POST              /api/lectures/                  save lecture + flashcards
 GET/PATCH/DELETE  /api/lectures/:id/              lecture detail / update (transcript, tags) / delete
 POST              /api/lectures/:id/regenerate/   regenerate notes+flashcards from transcript
+GET               /api/search/?q=&course_id=      full-text search; course_id is optional for scoping
 ```
 
 ---
@@ -245,6 +248,17 @@ Gemini generates up to 6 topic tags per lecture. Tags are stored as a JSONField 
 - Renders notes into a hidden print-only portal, then calls `window.print()` — browser native print-to-PDF
 - Print styles hide everything except the notes content
 
+### Global Search
+- `GET /api/search/?q=&course_id=` — searches lecture titles, summaries, notes, tags, and flashcard front/back; optional `course_id` scopes results to one course; returns `{ topics, lectures, flashcards }` capped at 6/6/5
+- `SearchModal` component (`components/SearchModal.tsx`) — command-palette style overlay, triggered by Cmd+K / Ctrl+K from any protected page or by a search button on CoursesPage and CourseDetailPage
+- **Scope chip**: when opened from a course page, a `[Course Name ×]` chip appears in the input; clicking × clears scope to search everywhere
+- **Scope toggle**: "This course" / "Everywhere" pill tabs appear when a course context is available
+- Richer result cards: lectures show summary snippet; flashcards show `→ back` preview; topics show lecture count
+- Course name shown under each result in global mode; hidden when scoped (no noise)
+- Empty state in scoped mode offers a one-click "search everywhere" link
+- Keyboard navigation: ↑↓ to move, ↵ to open, Esc to close; footer hints only shown when results exist
+- `AuthLayoutWrapper` (`components/AuthLayoutWrapper.tsx`) wraps the auth layout `Outlet`; mounts the modal and listens for Cmd+K + `brainjam:search` custom event with optional `{ courseId, courseName }` detail
+
 ---
 
 ## Key Components
@@ -265,6 +279,20 @@ Two separate buttons:
 ### ContextFiles.tsx
 - Drag-and-drop style file list with emoji icons, name, size, remove button
 - Accepts: `.pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.csv,image/*`
+
+### SearchModal.tsx
+- Command-palette overlay triggered by Cmd+K / Ctrl+K or `brainjam:search` custom event
+- Accepts optional `courseId` + `courseName` props for course-scoped search
+- Scope chip in input row (`[Course Name ×]`) — click × to clear scope and search everywhere
+- "This course" / "Everywhere" pill toggle (only shown when course context provided)
+- Results grouped into Topics, Lectures, Flashcards sections; each has richer secondary text
+- Keyboard navigation: ↑↓ to focus rows, ↵ to navigate, Esc to close; footer hints only render when results exist
+- Dispatching `brainjam:search` with `detail: { courseId, courseName }` opens pre-scoped modal
+
+### AuthLayoutWrapper.tsx
+- Replaces bare `Outlet` as the `authLayout` component in `routeTree.ts`
+- Listens for Cmd+K / Ctrl+K globally and for `brainjam:search` custom events
+- Renders `<SearchModal>` with the course context extracted from the event's `detail` field
 
 ### UserMenu.tsx
 - Avatar circle (first letter of username) + dropdown

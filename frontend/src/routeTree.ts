@@ -1,4 +1,4 @@
-import { createRootRoute, createRoute, Outlet, redirect } from '@tanstack/react-router'
+import { createRootRoute, createRoute, redirect } from '@tanstack/react-router'
 import RecordPage from './routes/index'
 import ResultsPage from './routes/results'
 import CoursesPage from './routes/courses'
@@ -7,6 +7,7 @@ import LecturePage from './routes/lecture'
 import TopicPage from './routes/topic'
 import LoginPage from './routes/login'
 import RegisterPage from './routes/register'
+import AuthLayoutWrapper from './components/AuthLayoutWrapper'
 import { isAuthenticated } from './authStore'
 
 const rootRoute = createRootRoute()
@@ -36,7 +37,7 @@ const registerRoute = createRoute({
 const authLayout = createRoute({
   getParentRoute: () => rootRoute,
   id: '_auth',
-  component: Outlet,
+  component: AuthLayoutWrapper,
   beforeLoad: () => {
     if (!isAuthenticated()) throw redirect({ to: '/login' })
   },

@@ -157,7 +157,19 @@ export default function CoursesPage() {
             </Link>
             <h1 className="text-3xl font-bold text-gray-900 mt-1">My Courses</h1>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('brainjam:search'))}
+              className="flex items-center gap-2 px-3 py-2 rounded-xl border border-gray-200 bg-white text-sm text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors shadow-sm"
+              title="Search (⌘K)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="7" />
+                <path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+              </svg>
+              <span className="hidden sm:block text-xs">Search</span>
+              <kbd className="hidden sm:block text-[10px] border border-gray-200 rounded px-1 font-sans leading-tight">⌘K</kbd>
+            </button>
             <button
               onClick={() => setShowNew(true)}
               className="px-4 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors shadow-md"
