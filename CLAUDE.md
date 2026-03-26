@@ -2,9 +2,10 @@
 
 ## What is BrainJam?
 
-BrainJam is a lecture-to-study-materials web app built for a hackathon. Students record a lecture audio and optionally snap photos of whiteboards/slides. The app automatically generates flashcards and structured notes from the combined audio + images, so students can focus entirely on the lecture rather than taking notes.
+BrainJam is a lecture-to-study-materials web app built for a hackathon. Students record a lecture audio and optionally snap photos of whiteboards/slides. The app automatically generates flashcards and structured notes from the combined audio + images.
 
 **Hackathon deadline:** Thursday March 27, 2026 — midday presentation.
+**Repo:** https://github.com/Enrikkk/BrainJam (private)
 
 ---
 
@@ -25,33 +26,59 @@ BrainJam is a lecture-to-study-materials web app built for a hackathon. Students
 ```
 BrainJam/
 ├── CLAUDE.md                  ← you are here
+├── PLAN.md                    ← 3-agent work division plan
 ├── .env                       ← GROQ_API_KEY, GEMINI_API_KEY (do NOT commit)
-├── frontend/                  ← Vite + React
+├── frontend/
 │   ├── vite.config.ts         ← Tailwind plugin + proxy /api → localhost:8000
 │   ├── src/
 │   │   ├── index.css          ← @import "tailwindcss"; @plugin "@tailwindcss/typography"
 │   │   ├── main.tsx           ← RouterProvider + QueryClientProvider; window.__test() dev helper
 │   │   ├── routeTree.ts       ← TanStack Router route definitions
-│   │   ├── store.ts           ← Module-level store (setResults/getResults) to pass data between routes
+│   │   ├── store.ts           ← Module-level store (setResults/getResults)
 │   │   ├── routes/
-│   │   │   ├── index.tsx      ← RecordPage: audio recorder + photo capture + generate button
-│   │   │   └── results.tsx    ← ResultsPage: flashcard viewer + notes viewer
+│   │   │   ├── index.tsx      ← RecordPage
+│   │   │   └── results.tsx    ← ResultsPage
 │   │   └── components/
-│   │       ├── AudioRecorder.tsx   ← MediaRecorder start/stop/pause, webm blob
-│   │       ├── PhotoCapture.tsx    ← File input with image/* + camera capture, thumbnails
-│   │       ├── FlashCard.tsx       ← CSS 3D flip card animation
-│   │       └── NotesViewer.tsx     ← react-markdown with prose/typography classes
+│   │       ├── AudioRecorder.tsx
+│   │       ├── PhotoCapture.tsx
+│   │       ├── FlashCard.tsx
+│   │       └── NotesViewer.tsx
 │   └── package.json
-│
 └── backend/
     └── brainjam/
         ├── manage.py
         ├── brainjam/
-        │   ├── settings.py    ← loads .env, adds corsheaders, DRF, api app
-        │   └── urls.py        ← includes api.urls at /api/
+        │   ├── settings.py
+        │   └── urls.py
         └── api/
             ├── urls.py        ← POST /api/process/
-            └── views.py       ← main pipeline: Groq transcription → Gemini generation
+            └── views.py       ← main pipeline
+```
+
+---
+
+## Running Locally
+
+**Backend:**
+```bash
+cd backend && source venv/bin/activate && cd brainjam && python manage.py runserver
+# Runs on http://localhost:8000
+```
+
+**Frontend:**
+```bash
+cd frontend && npm run dev
+# Runs on http://localhost:5173
+# /api/* proxied to http://localhost:8000
+```
+
+**Dev test helper** (browser console on any page):
+```js
+window.__test({
+  flashcards: [{front: "What is a neuron?", back: "A cell that transmits signals."}],
+  notes: "## Key Takeaways\n\n- Neurons transmit signals\n\n## Neurons\n\n- **Neurons** are cells",
+  transcript: "Today we will talk about neurons and the nervous system..."
+})
 ```
 
 ---
@@ -65,13 +92,14 @@ POST /api/process/  (multipart/form-data)
     images  — (optional) one or more image files
 
 Steps:
-  1. Groq Whisper large-v3 → transcript text
-  2. Gemini 2.5 Flash (with optional images) → JSON {flashcards, notes}
+  1. Groq Whisper large-v3 → transcript text (30s timeout)
+  2. Gemini 2.5 Flash (with optional images) → JSON {flashcards, notes}  (60s timeout)
 
 Response:
   {
     "flashcards": [{"front": "...", "back": "..."}],
-    "notes": "## Markdown string..."
+    "notes": "## Key Takeaways\n...",
+    "transcript": "raw transcript text..."
   }
 ```
 
@@ -85,76 +113,95 @@ GROQ_API_KEY=gsk_...
 GEMINI_API_KEY=...
 ```
 
-Django settings load this via `python-dotenv` at startup.
-
----
-
-## Running Locally
-
-**Backend:**
-```bash
-cd backend
-source venv/bin/activate
-cd brainjam
-python manage.py runserver
-# Runs on http://localhost:8000
-```
-
-**Frontend:**
-```bash
-cd frontend
-npm run dev
-# Runs on http://localhost:5173
-# /api/* requests are proxied to http://localhost:8000
-```
-
 ---
 
 ## Key Architecture Decisions
 
 ### Module-Level Store (store.ts)
-TanStack Router v1 does not support passing state between routes the same way React Router does. We use a simple module-level variable (`let results`) with `setResults()`/`getResults()` to pass data from RecordPage to ResultsPage after a successful API call.
+TanStack Router v1 does not support passing state between routes. We use a simple module-level variable with `setResults()`/`getResults()` to pass data from RecordPage to ResultsPage.
 
 ### Groq Instead of OpenAI Whisper
-Using Groq's Whisper API (OpenAI-compatible endpoint at `https://api.groq.com/openai/v1`). It's free for students and has very fast transcription. Accepts `audio/webm` format directly from the browser's MediaRecorder.
+Free for students. OpenAI-compatible endpoint at `https://api.groq.com/openai/v1`. Force `audio/webm` content-type (not `audio/webm;codecs=opus`).
 
-### Gemini Instead of Anthropic Claude
-Using Google Gemini 2.5 Flash for generation + vision because it's free via API key. The model handles both vision (board photos) and structured JSON generation in a single call. Model ID: `gemini-2.5-flash` (not `gemini-2.0-flash` or `gemini-1.5-flash` — those aren't available on this account).
-
-### google-genai Package
-Use `from google import genai` (`google-genai` package). Do NOT use `google-generativeai` (deprecated).
+### Gemini 2.5 Flash
+Free via API key. Model ID: `gemini-2.5-flash`. Use `from google import genai` (`google-genai` package). Do NOT use `google-generativeai` (deprecated). Gemini timeout wrapped in `concurrent.futures.ThreadPoolExecutor`.
 
 ---
 
-## What's Working (as of March 24, 2026)
+## Current State (as of March 26, 2026)
 
-- [x] Full frontend UI: audio recording, photo capture, flashcard flip, notes viewer
-- [x] Backend API endpoint receiving multipart audio + images
-- [x] Groq Whisper transcription of webm audio
-- [x] Gemini 2.5 Flash generating flashcards + markdown notes from transcript
-- [x] End-to-end flow: record → generate → view flashcards + notes
-- [x] Tailwind typography plugin for styled markdown notes
-- [x] Dev helper: `window.__test(data)` in browser console injects fake data for testing
+### ✅ Merged to main
 
-## Known Issues / Recent Fixes
+**Agent 3 — Backend** (`backend/brainjam/api/views.py`):
+- `transcript` field returned in API response
+- Groq 30s timeout, Gemini 60s timeout via ThreadPoolExecutor
+- Improved Gemini prompt: Key Takeaways section, bold terms, concept-based questions, dedup
+- `max_output_tokens=8192`, `temperature=0.4`
+- 413 response for audio > 25MB
+- Empty transcript → 422 with friendly message
 
-- Empty `flashcards: []` from Gemini (when transcript is empty) used to crash the UI — fixed by guarding for empty array in `results.tsx`
-- Force `audio/webm` as content-type when sending to Groq (browser sometimes sends `audio/webm;codecs=opus` which some APIs reject)
-- Empty transcript now returns a user-friendly error instead of sending empty text to Gemini
+**Agent 1 — RecordPage** (`frontend/src/routes/index.tsx`, `frontend/src/components/AudioRecorder.tsx`):
+- `LoadingStep` union type: `'idle' | 'uploading' | 'transcribing' | 'generating'`
+- 3-step visual progress indicator with checkmarks and pulse animation
+- AbortController cancel button during generation
+- Microphone permission denied → `'error'` state in AudioRecorder with friendly message
+- `onReset` prop clears parent error banner on re-record
+- Mobile layout fixes (padding, text truncation)
+
+### ⏳ In Progress
+
+**Agent 2 — ResultsPage** (`feature/agent2-results-polish` branch, not yet pushed to remote):
+- Transcript tab (3rd tab showing raw Whisper output)
+- Keyboard navigation (arrow keys prev/next, Space/Enter to flip)
+- Copy notes to clipboard
+- Flashcard text overflow fix
+- Polished empty state
+- `store.ts` update: add `transcript: string` to `LectureResults`
+
+### 🔜 Next (planned, not yet started)
+- Add `title` + `summary` fields to Gemini response (backend)
+- "Load demo" button on RecordPage for fallback during live demo (frontend)
+
+---
+
+## File Ownership (for parallel work — no conflicts)
+
+| File | Owner | Status |
+|---|---|---|
+| `frontend/src/routes/index.tsx` | Agent 1 | ✅ Merged |
+| `frontend/src/components/AudioRecorder.tsx` | Agent 1 | ✅ Merged |
+| `frontend/src/components/PhotoCapture.tsx` | Agent 1 | ✅ Merged |
+| `frontend/src/routes/results.tsx` | Agent 2 | ⏳ In progress |
+| `frontend/src/components/FlashCard.tsx` | Agent 2 | ⏳ In progress |
+| `frontend/src/components/NotesViewer.tsx` | Agent 2 | ⏳ In progress |
+| `frontend/src/store.ts` | Agent 2 | ⏳ In progress |
+| `backend/brainjam/api/views.py` | Agent 3 | ✅ Merged |
+| `backend/brainjam/brainjam/settings.py` | Agent 3 | ✅ Merged |
+
+---
+
+## Merge Order
+1. ✅ Agent 3 merged first (transcript in response)
+2. ✅ Agent 1 merged (independent)
+3. ⏳ Agent 2 merges next — then integration test
+
+---
+
+## Known Issues / Past Fixes
+
+- Empty `flashcards: []` from Gemini crashed UI — fixed in `results.tsx`: `!state?.flashcards || state.flashcards.length === 0`
+- Force `audio/webm` content-type to Groq (browser sends `audio/webm;codecs=opus`)
+- TanStack Router v1 doesn't support route state → module-level store pattern
+- Gemini model must be `gemini-2.5-flash` (not 2.0 or 1.5 — not available on this account)
+- `load_dotenv` must be called after `BASE_DIR` is defined in settings.py
 
 ---
 
 ## Out of Scope for Hackathon MVP
 
 - User accounts / authentication
-- Persistent storage (results live in memory)
-- React Native mobile app (planned for post-hackathon)
+- Persistent storage
+- React Native mobile app (planned post-hackathon)
 - Export to Anki/PDF
 - Real-time transcription
 - Audio chunking for files >25 MB
-
----
-
-## Future: React Native Mobile App
-
-After the hackathon, the plan is to build a React Native version using the same Django backend. The mobile app would use the device microphone + camera natively instead of the browser's MediaRecorder API.
