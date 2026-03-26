@@ -62,7 +62,7 @@ def _run_gemini(parts):
             contents=parts,
             config=types.GenerateContentConfig(
                 system_instruction=_SYSTEM_PROMPT,
-                max_output_tokens=8192,
+                max_output_tokens=65536,
                 temperature=0.4,
             ),
         )
@@ -76,10 +76,16 @@ def _run_gemini(parts):
 
     raw = response.text.strip()
     print(f'[GEMINI] raw response (first 300): {repr(raw[:300])}')
-    if raw.startswith('```'):
-        raw = raw.split('```')[1]
-        if raw.startswith('json'):
-            raw = raw[4:]
+    # Strip markdown fences if present
+    if '```' in raw:
+        match = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
+        if match:
+            raw = match.group(1).strip()
+    # Extract the outermost JSON object or array as a fallback
+    if not raw.startswith(('{', '[')):
+        match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', raw)
+        if match:
+            raw = match.group(1)
     return json.loads(raw)
 
 
@@ -525,7 +531,7 @@ def course_exam(request, pk):
                 contents=['\n\n'.join(parts)],
                 config=types.GenerateContentConfig(
                     system_instruction=_EXAM_PROMPT,
-                    max_output_tokens=8192,
+                    max_output_tokens=65536,
                     temperature=0.5,
                 ),
             )
@@ -538,10 +544,14 @@ def course_exam(request, pk):
                 raise TimeoutError('Exam generation timed out.')
 
         raw = response.text.strip()
-        if raw.startswith('```'):
-            raw = raw.split('```')[1]
-            if raw.startswith('json'):
-                raw = raw[4:]
+        if '```' in raw:
+            match = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
+            if match:
+                raw = match.group(1).strip()
+        if not raw.startswith(('{', '[')):
+            match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', raw)
+            if match:
+                raw = match.group(1)
         questions = json.loads(raw)
 
         TopicExam.objects.update_or_create(
