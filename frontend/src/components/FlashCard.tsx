@@ -5,10 +5,23 @@ interface Props {
   back: string
   index: number
   total: number
+  flipped?: boolean
+  onFlip?: () => void
 }
 
-export default function FlashCard({ front, back, index, total }: Props) {
-  const [flipped, setFlipped] = useState(false)
+export default function FlashCard({ front, back, index, total, flipped: flippedProp, onFlip }: Props) {
+  const [flippedInternal, setFlippedInternal] = useState(false)
+
+  const isControlled = flippedProp !== undefined
+  const flipped = isControlled ? flippedProp : flippedInternal
+
+  function handleClick() {
+    if (isControlled) {
+      onFlip?.()
+    } else {
+      setFlippedInternal((f) => !f)
+    }
+  }
 
   return (
     <div className="flex flex-col items-center gap-2">
@@ -16,7 +29,7 @@ export default function FlashCard({ front, back, index, total }: Props) {
       <div
         className="w-full cursor-pointer"
         style={{ perspective: '1000px' }}
-        onClick={() => setFlipped((f) => !f)}
+        onClick={handleClick}
       >
         <div
           className="relative w-full transition-transform duration-500"
@@ -28,14 +41,14 @@ export default function FlashCard({ front, back, index, total }: Props) {
         >
           {/* Front */}
           <div
-            className="absolute inset-0 rounded-2xl bg-indigo-600 text-white flex items-center justify-center p-6 text-center font-medium text-lg"
+            className="absolute inset-0 rounded-2xl bg-indigo-600 text-white flex items-center justify-center p-6 text-center font-medium text-base overflow-y-auto max-h-60"
             style={{ backfaceVisibility: 'hidden' }}
           >
             {front}
           </div>
           {/* Back */}
           <div
-            className="absolute inset-0 rounded-2xl bg-white border border-indigo-100 shadow-inner text-gray-800 flex items-center justify-center p-6 text-center"
+            className="absolute inset-0 rounded-2xl bg-white border border-indigo-100 shadow-inner text-gray-800 flex items-center justify-center p-6 text-center overflow-y-auto max-h-60"
             style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
           >
             {back}
