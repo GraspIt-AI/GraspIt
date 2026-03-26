@@ -20,6 +20,7 @@ BrainJam is a lecture-to-study-materials web app built for a hackathon. Students
 | Generation + Vision | Google Gemini 2.5 Flash (`gemini-2.5-flash`) |
 | Styling | Tailwind CSS v4 with `@tailwindcss/typography` |
 | Office file parsing | `python-pptx`, `python-docx`, `openpyxl` |
+| Anki export | `genanki` |
 
 ---
 
@@ -152,9 +153,11 @@ GET/POST          /api/courses/                   list / create course
 GET/PUT/DELETE    /api/courses/:id/               course detail / update / delete
 GET/POST/PATCH    /api/courses/:id/exam/          get/generate/submit-score for topic exam
 GET               /api/courses/:id/topic/         topic data (notes + flashcards across lectures)
+GET               /api/courses/:id/anki/?tag=     export topic flashcards as .apkg (tag optional → whole course)
 POST              /api/lectures/                  save lecture + flashcards
 GET/PATCH/DELETE  /api/lectures/:id/              lecture detail / update (transcript, tags) / delete
 POST              /api/lectures/:id/regenerate/   regenerate notes+flashcards from transcript
+GET               /api/lectures/:id/anki/         export lecture flashcards as .apkg
 GET               /api/search/?q=&course_id=      full-text search; course_id is optional for scoping
 ```
 
@@ -247,6 +250,14 @@ Gemini generates up to 6 topic tags per lecture. Tags are stored as a JSONField 
 - Notes tab has an "Export PDF" button using `usePrintNotes` hook (`frontend/src/usePrintNotes.tsx`)
 - Renders notes into a hidden print-only portal, then calls `window.print()` — browser native print-to-PDF
 - Print styles hide everything except the notes content
+
+### Anki Export
+- `GET /api/lectures/:id/anki/` — exports a lecture's flashcards as a native `.apkg` file
+- `GET /api/courses/:id/anki/?tag=` — exports all flashcards for a topic (across all tagged lectures) as `.apkg`; omitting `tag` exports the whole course
+- Uses `genanki` with a fixed model ID (`1607392319`) so repeated imports don't create duplicate model definitions in Anki
+- Files are served as `application/octet-stream` with `Content-Disposition: attachment`; filenames are sanitised (special chars stripped, spaces → underscores)
+- `downloadFile(url, filename)` in `api.ts` handles auth-protected binary downloads: fetches with Bearer token, creates a blob object URL, triggers browser save dialog via a hidden `<a>` click, then revokes the URL
+- "Export to Anki" button on the Flashcards tab of both LecturePage and TopicPage; shows "Exporting…" while in flight; errors surfaced via `alert()`
 
 ### Global Search
 - `GET /api/search/?q=&course_id=` — searches lecture titles, summaries, notes, tags, and flashcard front/back; optional `course_id` scopes results to one course; returns `{ topics, lectures, flashcards }` capped at 6/6/5
