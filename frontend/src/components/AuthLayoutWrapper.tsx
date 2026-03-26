@@ -22,10 +22,10 @@ export default function AuthLayoutWrapper() {
       setSearchCtx(detail)
     }
     window.addEventListener('keydown', onKey)
-    window.addEventListener('brainjam:search', onCustom)
+    window.addEventListener('graspit:search', onCustom)
     return () => {
       window.removeEventListener('keydown', onKey)
-      window.removeEventListener('brainjam:search', onCustom)
+      window.removeEventListener('graspit:search', onCustom)
     }
   }, [])
 

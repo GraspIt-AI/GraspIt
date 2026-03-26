@@ -149,7 +149,7 @@ export default function CoursesPage() {
         </Link>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => window.dispatchEvent(new CustomEvent('brainjam:search'))}
+            onClick={() => window.dispatchEvent(new CustomEvent('graspit:search'))}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors shadow-sm"
             title="Search (⌘K)"
           >
@@ -200,7 +200,7 @@ export default function CoursesPage() {
               </div>
               <div>
                 <h3 className="text-base font-bold text-gray-800 mb-1">No courses yet</h3>
-                <p className="text-sm text-gray-400">Welcome to BrainJam! Create your first course to start organising your lectures.</p>
+                <p className="text-sm text-gray-400">Welcome to GraspIt! Create your first course to start organising your lectures.</p>
               </div>
               <button
                 onClick={() => setShowNew(true)}

@@ -199,10 +199,10 @@ export default function HomePage() {
     <div className="min-h-screen bg-[#fafafa]">
       {/* Sticky nav */}
       <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 px-6 h-14 flex items-center justify-between">
-        <span className="text-base font-bold text-gray-900 tracking-tight">BrainJam</span>
+        <span className="text-base font-bold text-gray-900 tracking-tight">GraspIt</span>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => window.dispatchEvent(new CustomEvent('brainjam:search'))}
+            onClick={() => window.dispatchEvent(new CustomEvent('graspit:search'))}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors shadow-sm"
             title="Search (⌘K)"
           >

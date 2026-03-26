@@ -19,7 +19,7 @@ const SUGGESTIONS = [
   'What should I focus on to review?',
 ]
 
-const STORAGE_KEY = (id: number) => `brainjam_chat_${id}`
+const STORAGE_KEY = (id: number) => `graspit_chat_${id}`
 
 export default function CourseChat({ courseId, courseName, onClose }: Props) {
   const [messages, setMessages] = useState<Message[]>(() => {

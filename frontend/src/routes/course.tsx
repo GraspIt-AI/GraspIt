@@ -148,7 +148,7 @@ export default function CourseDetailPage({ courseId }: Props) {
           </Link>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => window.dispatchEvent(new CustomEvent('brainjam:search', { detail: { courseId: course.id, courseName: course.name } }))}
+              onClick={() => window.dispatchEvent(new CustomEvent('graspit:search', { detail: { courseId: course.id, courseName: course.name } }))}
               className="p-2 text-gray-400 hover:text-indigo-600 transition-colors rounded-lg hover:bg-gray-50"
               title="Search this course (⌘K)"
             >

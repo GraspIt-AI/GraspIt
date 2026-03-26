@@ -30,7 +30,7 @@ export default function LoginPage() {
       <div className="w-full max-w-sm flex flex-col gap-6">
         {/* Brand */}
         <div className="text-center mb-2">
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">BrainJam</h1>
+          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">GraspIt</h1>
           <p className="text-gray-400 mt-1 text-sm">Sign in to continue learning</p>
         </div>
 

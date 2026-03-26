@@ -622,7 +622,7 @@ def course_exam(request, pk):
 
 _ANKI_MODEL = genanki.Model(
     1607392319,  # fixed ID so repeated imports don't create duplicate model definitions in Anki
-    'BrainJam Basic',
+    'GraspIt Basic',
     fields=[{'name': 'Front'}, {'name': 'Back'}],
     templates=[{
         'name': 'Card 1',
