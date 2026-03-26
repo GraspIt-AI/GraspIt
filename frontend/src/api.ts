@@ -17,6 +17,16 @@ export interface LectureListItem {
   flashcard_count: number
 }
 
+export interface RecentLecture {
+  id: number
+  title: string
+  created_at: string
+  course_id: number
+  course_name: string
+  course_color: string
+  flashcard_count: number
+}
+
 export interface ExamScore {
   tag: string
   last_score: number | null
@@ -156,6 +166,7 @@ export const api = {
     req<SearchResults>(`/api/search/?q=${encodeURIComponent(q)}${courseId ? `&course_id=${courseId}` : ''}`),
   courses: {
     list: () => req<CourseListItem[]>('/api/courses/'),
+    default: () => req<{ id: number; name: string }>('/api/courses/default/'),
     create: (body: { name: string; description?: string; color?: string }) =>
       req<CourseListItem>('/api/courses/', { method: 'POST', body: JSON.stringify(body) }),
     get: (id: number) => req<CourseDetail>(`/api/courses/${id}/`),
@@ -176,6 +187,7 @@ export const api = {
       req<TopicData>(`/api/courses/${id}/topic/?tag=${encodeURIComponent(tag)}`),
   },
   lectures: {
+    recent: () => req<RecentLecture[]>('/api/lectures/recent/'),
     save: (body: {
       course: number
       title: string

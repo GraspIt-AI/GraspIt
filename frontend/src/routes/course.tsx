@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type LectureListItem } from '../api'
+import UserMenu from '../components/UserMenu'
 import CourseChat from '../components/CourseChat'
 
 interface Props {
@@ -21,17 +22,17 @@ function LectureCard({ lecture, courseId }: { lecture: LectureListItem; courseId
   })
 
   return (
-    <div className="group flex items-start gap-4 bg-white rounded-2xl border border-gray-100 px-5 py-4 hover:shadow-md transition-all">
+    <div className="group flex items-start gap-4 bg-white rounded-2xl border border-gray-100 px-5 py-4 hover:shadow-md hover:-translate-y-0.5 transition-all">
       <Link
         to="/lectures/$lectureId"
         params={{ lectureId: String(lecture.id) }}
         className="flex-1 min-w-0"
       >
-        <h3 className="font-semibold text-gray-900 group-hover:text-indigo-700 transition-colors">
+        <h3 className="font-semibold text-gray-900 group-hover:text-indigo-600 transition-colors">
           {lecture.title}
         </h3>
         {lecture.summary && (
-          <p className="text-sm text-gray-500 mt-0.5 line-clamp-2">{lecture.summary}</p>
+          <p className="text-sm text-gray-400 mt-0.5 line-clamp-2">{lecture.summary}</p>
         )}
         <div className="flex items-center gap-3 mt-2 text-xs text-gray-400">
           <span>{formatDate(lecture.created_at)}</span>
@@ -56,9 +57,9 @@ function LectureCard({ lecture, courseId }: { lecture: LectureListItem; courseId
       </Link>
       {confirmDelete ? (
         <div className="flex items-center gap-2 shrink-0 mt-0.5">
-          <span className="text-xs text-gray-500">Are you sure?</span>
-          <button onClick={() => del.mutate()} className="text-xs text-red-500 font-semibold hover:text-red-700">Delete</button>
-          <button onClick={() => setConfirmDelete(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+          <span className="text-xs text-gray-400">Delete?</span>
+          <button onClick={() => del.mutate()} className="text-xs text-red-500 font-semibold hover:text-red-700">Yes</button>
+          <button onClick={() => setConfirmDelete(false)} className="text-xs text-gray-400 hover:text-gray-600">No</button>
         </div>
       ) : (
         <button
@@ -94,7 +95,7 @@ export default function CourseDetailPage({ courseId }: Props) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
       </div>
     )
@@ -102,10 +103,10 @@ export default function CourseDetailPage({ courseId }: Props) {
 
   if (!course) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
         <div className="text-center">
           <p className="text-gray-500">Course not found.</p>
-          <Link to="/courses" className="text-indigo-600 text-sm mt-2 inline-block">← Back to courses</Link>
+          <Link to="/courses" className="text-indigo-500 text-sm mt-2 inline-block hover:text-indigo-700">← Back to courses</Link>
         </div>
       </div>
     )
@@ -139,171 +140,192 @@ export default function CourseDetailPage({ courseId }: Props) {
 
   return (
     <>
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 px-4 py-12">
-      <div className="w-full max-w-2xl mx-auto flex flex-col gap-8">
-        {/* Header */}
-        <div>
-          <Link to="/courses" className="text-xs text-indigo-500 hover:text-indigo-700 font-medium">
+      <div className="min-h-screen bg-[#fafafa]">
+        {/* Nav */}
+        <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 px-5 sm:px-6 h-14 flex items-center justify-between">
+          <Link to="/courses" className="text-sm font-medium text-indigo-500 hover:text-indigo-700 transition-colors">
             ← My Courses
           </Link>
-          <div className="flex items-start justify-between mt-2 gap-3">
-            <div className="flex items-center gap-3">
-              <div
-                className="w-12 h-12 rounded-xl flex items-center justify-center text-white font-bold text-xl shrink-0"
-                style={{ background: course.color }}
-              >
-                {course.name.charAt(0).toUpperCase()}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('brainjam:search', { detail: { courseId: course.id, courseName: course.name } }))}
+              className="p-2 text-gray-400 hover:text-indigo-600 transition-colors rounded-lg hover:bg-gray-50"
+              title="Search this course (⌘K)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <circle cx="11" cy="11" r="7" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setChatOpen(true)}
+              className="p-2 text-gray-400 hover:text-indigo-600 transition-colors rounded-lg hover:bg-gray-50"
+              title="Ask your lectures (AI)"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+            </button>
+            <Link
+              to="/record"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+              </svg>
+              <span className="hidden sm:block">New Lecture</span>
+            </Link>
+            <UserMenu />
+          </div>
+        </nav>
+
+        <div className="max-w-2xl mx-auto px-5 sm:px-6">
+          {/* Course header */}
+          <section className="pt-10 pb-8">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center text-white font-bold text-xl shrink-0"
+                  style={{ background: course.color }}
+                >
+                  {course.name.charAt(0).toUpperCase()}
+                </div>
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight">{course.name}</h1>
+                  {course.description && (
+                    <p className="text-sm text-gray-400 mt-0.5">{course.description}</p>
+                  )}
+                </div>
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{course.name}</h1>
-                {course.description && (
-                  <p className="text-sm text-gray-500 mt-0.5">{course.description}</p>
-                )}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={() => setChatOpen(true)}
-                className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"
-                title="Ask your lectures (AI)"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-                </svg>
-              </button>
-              <button
-                onClick={() => window.dispatchEvent(new CustomEvent('brainjam:search', { detail: { courseId: course.id, courseName: course.name } }))}
-                className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"
-                title="Search this course (⌘K)"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                  <circle cx="11" cy="11" r="7" /><path strokeLinecap="round" d="M21 21l-4.35-4.35" />
-                </svg>
-              </button>
-              <Link
-                to="/"
-                className="px-4 py-2 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
-              >
-                + Record Lecture
-              </Link>
               {confirmDeleteCourse ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-500">Delete course?</span>
+                <div className="flex items-center gap-2 shrink-0 mt-1">
+                  <span className="text-xs text-gray-400">Delete course?</span>
                   <button onClick={() => del.mutate()} className="text-xs text-red-500 font-semibold hover:text-red-700">Delete</button>
                   <button onClick={() => setConfirmDeleteCourse(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
                 </div>
               ) : (
                 <button
                   onClick={() => setConfirmDeleteCourse(true)}
-                  className="p-2 text-gray-300 hover:text-red-400 transition-colors"
+                  className="p-2 text-gray-300 hover:text-red-400 transition-colors rounded-lg hover:bg-red-50 shrink-0 mt-0.5"
                   title="Delete course"
                 >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
                   </svg>
                 </button>
               )}
             </div>
+          </section>
+
+          <div className="flex flex-col gap-8 pb-16">
+            {/* Stats row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="bg-white rounded-2xl px-4 py-4 border border-gray-100 text-center">
+                <p className="text-2xl font-bold text-gray-900">{course.lectures.length}</p>
+                <p className="text-xs text-gray-400 mt-1">Lectures</p>
+              </div>
+              <div className="bg-white rounded-2xl px-4 py-4 border border-gray-100 text-center">
+                <p className="text-2xl font-bold text-gray-900">
+                  {course.lectures.reduce((sum, l) => sum + l.flashcard_count, 0)}
+                </p>
+                <p className="text-xs text-gray-400 mt-1">Flashcards</p>
+              </div>
+              {allTags.length > 0 && (
+                <div className="bg-white rounded-2xl px-4 py-4 border border-gray-100 text-center">
+                  <p className="text-2xl font-bold text-gray-900">{allTags.length}</p>
+                  <p className="text-xs text-gray-400 mt-1">Topics</p>
+                </div>
+              )}
+              {avgPct !== null && (
+                <div className="bg-white rounded-2xl px-4 py-4 border border-gray-100 text-center">
+                  <p className={`text-2xl font-bold ${avgPct >= 70 ? 'text-green-600' : avgPct >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
+                    {avgPct}%
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">Avg score</p>
+                </div>
+              )}
+            </div>
+
+            {/* Topics */}
+            {allTags.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Topics</h2>
+                <div className="flex flex-wrap gap-2">
+                  {allTags.map((tag) => (
+                    <Link
+                      key={tag}
+                      to="/courses/$courseId/topics/$tag"
+                      params={{ courseId: String(courseId), tag }}
+                      className="flex items-center gap-1.5 text-sm px-3.5 py-1.5 rounded-full border border-indigo-100 bg-white text-indigo-600 font-medium hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-colors"
+                    >
+                      {tag}
+                      {scoreBadge(tag) && <span onClick={(e) => e.preventDefault()}>{scoreBadge(tag)}</span>}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Needs Review */}
+            {weakTags.length > 0 && (
+              <div className="flex flex-col gap-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-red-400">Needs Review</h2>
+                <div className="flex flex-col gap-2">
+                  {weakTags.map((tag) => (
+                    <Link
+                      key={tag}
+                      to="/courses/$courseId/topics/$tag"
+                      params={{ courseId: String(courseId), tag }}
+                      className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-red-100 hover:border-red-300 hover:shadow-sm transition-all"
+                    >
+                      <div className="flex items-center gap-2">
+                        {scoreBadge(tag)}
+                        <span className="text-sm font-medium text-gray-700">{tag}</span>
+                      </div>
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Lectures */}
+            {course.lectures.length > 0 ? (
+              <div className="flex flex-col gap-3">
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Lectures</h2>
+                <div className="flex flex-col gap-2">
+                  {course.lectures.map((l) => (
+                    <LectureCard key={l.id} lecture={l} courseId={courseId} />
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-4 py-16 text-center">
+                <div className="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center">
+                  <svg className="w-7 h-7 text-indigo-400" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 016 0v6a3 3 0 01-3 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-800 mb-1">No lectures yet</h3>
+                  <p className="text-sm text-gray-400">Record a lecture and save it to this course.</p>
+                </div>
+                <Link
+                  to="/record"
+                  className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700 transition-colors"
+                >
+                  Record your first lecture
+                </Link>
+              </div>
+            )}
           </div>
         </div>
-
-        {/* Stats */}
-        <div className="flex gap-4">
-          <div className="bg-white rounded-2xl px-5 py-3 border border-gray-100 text-center flex-1">
-            <p className="text-2xl font-bold text-gray-900">{course.lectures.length}</p>
-            <p className="text-xs text-gray-500 mt-0.5">Lectures</p>
-          </div>
-          <div className="bg-white rounded-2xl px-5 py-3 border border-gray-100 text-center flex-1">
-            <p className="text-2xl font-bold text-gray-900">
-              {course.lectures.reduce((sum, l) => sum + l.flashcard_count, 0)}
-            </p>
-            <p className="text-xs text-gray-500 mt-0.5">Flashcards</p>
-          </div>
-          {allTags.length > 0 && (
-            <div className="bg-white rounded-2xl px-5 py-3 border border-gray-100 text-center flex-1">
-              <p className="text-2xl font-bold text-gray-900">{allTags.length}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Topics</p>
-            </div>
-          )}
-          {avgPct !== null && (
-            <div className="bg-white rounded-2xl px-5 py-3 border border-gray-100 text-center flex-1">
-              <p className={`text-2xl font-bold ${avgPct >= 70 ? 'text-green-600' : avgPct >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
-                {avgPct}%
-              </p>
-              <p className="text-xs text-gray-500 mt-0.5">Avg score</p>
-            </div>
-          )}
-        </div>
-
-        {/* Topics */}
-        {allTags.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Topics</h2>
-            <div className="flex flex-wrap gap-2">
-              {allTags.map((tag) => (
-                <Link
-                  key={tag}
-                  to="/courses/$courseId/topics/$tag"
-                  params={{ courseId: String(courseId), tag }}
-                  className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border border-indigo-200 bg-white text-indigo-700 font-medium hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-colors"
-                >
-                  {tag}
-                  {scoreBadge(tag) && <span onClick={(e) => e.preventDefault()}>{scoreBadge(tag)}</span>}
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Needs Review */}
-        {weakTags.length > 0 && (
-          <div className="flex flex-col gap-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-red-400">Needs Review</h2>
-            <div className="flex flex-col gap-2">
-              {weakTags.map((tag) => (
-                <Link
-                  key={tag}
-                  to="/courses/$courseId/topics/$tag"
-                  params={{ courseId: String(courseId), tag }}
-                  className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-red-100 hover:border-red-300 hover:shadow-sm transition-all"
-                >
-                  <div className="flex items-center gap-2">
-                    {scoreBadge(tag)}
-                    <span className="text-sm font-medium text-gray-700">{tag}</span>
-                  </div>
-                  <span className="text-gray-400 text-sm">→</span>
-                </Link>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Lectures list */}
-        {course.lectures.length > 0 ? (
-          <div className="flex flex-col gap-3">
-            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Lectures</h2>
-            {course.lectures.map((l) => (
-              <LectureCard key={l.id} lecture={l} courseId={courseId} />
-            ))}
-          </div>
-        ) : (
-          <div className="flex flex-col items-center gap-3 py-16 text-center">
-            <div className="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center text-2xl">🎙️</div>
-            <h2 className="text-lg font-bold text-gray-800">No lectures yet</h2>
-            <p className="text-sm text-gray-500">Record a lecture and save it to this course.</p>
-            <Link
-              to="/"
-              className="mt-2 px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-xl hover:bg-indigo-700"
-            >
-              Record your first lecture
-            </Link>
-          </div>
-        )}
       </div>
-    </div>
-    {chatOpen && (
-      <CourseChat courseId={courseId} courseName={course.name} onClose={() => setChatOpen(false)} />
-    )}
+
+      {chatOpen && (
+        <CourseChat courseId={courseId} courseName={course.name} onClose={() => setChatOpen(false)} />
+      )}
     </>
   )
 }

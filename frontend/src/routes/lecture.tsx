@@ -5,6 +5,7 @@ import { api, downloadFile } from '../api'
 import FlashCard from '../components/FlashCard'
 import NotesViewer from '../components/NotesViewer'
 import { usePrintNotes } from '../usePrintNotes'
+import UserMenu from '../components/UserMenu'
 
 interface Props {
   lectureId: number
@@ -22,9 +23,7 @@ export default function LecturePage({ lectureId }: Props) {
   const del = useMutation({
     mutationFn: () => api.lectures.delete(lectureId),
     onSuccess: () => {
-      if (lecture) {
-        qc.invalidateQueries({ queryKey: ['course', lecture.course] })
-      }
+      if (lecture) qc.invalidateQueries({ queryKey: ['course', lecture.course] })
       navigate({ to: '/courses' })
     },
   })
@@ -81,18 +80,10 @@ export default function LecturePage({ lectureId }: Props) {
     if (!lecture || tab !== 'flashcards') return
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
       e.preventDefault()
-      setCardIndex((i) => {
-        const next = Math.min(lecture.flashcards.length - 1, i + 1)
-        if (next !== i) setCardFlipped(false)
-        return next
-      })
+      setCardIndex((i) => { const next = Math.min(lecture.flashcards.length - 1, i + 1); if (next !== i) setCardFlipped(false); return next })
     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
       e.preventDefault()
-      setCardIndex((i) => {
-        const prev = Math.max(0, i - 1)
-        if (prev !== i) setCardFlipped(false)
-        return prev
-      })
+      setCardIndex((i) => { const prev = Math.max(0, i - 1); if (prev !== i) setCardFlipped(false); return prev })
     } else if (e.key === ' ' || e.key === 'Enter') {
       e.preventDefault()
       setCardFlipped((f) => !f)
@@ -106,7 +97,7 @@ export default function LecturePage({ lectureId }: Props) {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
         <div className="w-8 h-8 border-4 border-indigo-300 border-t-indigo-600 rounded-full animate-spin" />
       </div>
     )
@@ -114,19 +105,16 @@ export default function LecturePage({ lectureId }: Props) {
 
   if (!lecture) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
         <div className="text-center">
-          <p className="text-gray-500">Lecture not found.</p>
-          <Link to="/courses" className="text-indigo-600 text-sm mt-2 inline-block">← Back to courses</Link>
+          <p className="text-gray-400">Lecture not found.</p>
+          <Link to="/courses" className="text-indigo-500 text-sm mt-2 inline-block hover:text-indigo-700">← Back to courses</Link>
         </div>
       </div>
     )
   }
 
-  function goToCard(next: number) {
-    setCardIndex(next)
-    setCardFlipped(false)
-  }
+  function goToCard(next: number) { setCardIndex(next); setCardFlipped(false) }
 
   function copyNotes() {
     navigator.clipboard.writeText(lecture!.notes).then(() => {
@@ -143,9 +131,7 @@ export default function LecturePage({ lectureId }: Props) {
 
   function addTag() {
     const t = tagInput.trim()
-    if (t && !tagsDraft.includes(t)) {
-      setTagsDraft((prev) => [...prev, t])
-    }
+    if (t && !tagsDraft.includes(t)) setTagsDraft((prev) => [...prev, t])
     setTagInput('')
   }
 
@@ -154,29 +140,51 @@ export default function LecturePage({ lectureId }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex flex-col items-center px-4 py-12">
-      <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl p-8 flex flex-col gap-6">
-        {/* Header */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <Link
-              to="/courses/$courseId"
-              params={{ courseId: String(lecture.course) }}
-              className="text-xs text-indigo-500 hover:text-indigo-700 font-medium"
+    <div className="min-h-screen bg-[#fafafa]">
+      {/* Nav */}
+      <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 px-5 sm:px-6 h-14 flex items-center justify-between">
+        <Link
+          to="/courses/$courseId"
+          params={{ courseId: String(lecture.course) }}
+          className="text-sm font-medium text-indigo-500 hover:text-indigo-700 transition-colors"
+        >
+          ← Back to course
+        </Link>
+        <div className="flex items-center gap-2">
+          {confirmDelete ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-400">Delete lecture?</span>
+              <button onClick={() => del.mutate()} className="text-xs text-red-500 font-semibold hover:text-red-700">Delete</button>
+              <button onClick={() => setConfirmDelete(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="p-2 text-gray-300 hover:text-red-400 transition-colors rounded-lg hover:bg-red-50"
+              title="Delete lecture"
             >
-              ← Back to course
-            </Link>
-            <h1 className="text-2xl font-bold text-gray-900 leading-tight mt-1">{lecture.title}</h1>
-            {lecture.summary && (
-              <p className="text-sm text-gray-500 mt-1 leading-snug">{lecture.summary}</p>
-            )}
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+              </svg>
+            </button>
+          )}
+          <UserMenu />
+        </div>
+      </nav>
 
-            {/* Tags */}
+      <div className="max-w-2xl mx-auto px-5 sm:px-6">
+        {/* Lecture header */}
+        <section className="pt-10 pb-6">
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 tracking-tight leading-tight">{lecture.title}</h1>
+          {lecture.summary && <p className="text-sm text-gray-400 mt-2 leading-relaxed">{lecture.summary}</p>}
+
+          {/* Tags */}
+          <div className="mt-3">
             {editingTags ? (
-              <div className="mt-2 flex flex-col gap-2">
+              <div className="flex flex-col gap-2">
                 <div className="flex flex-wrap gap-1.5">
                   {tagsDraft.map((tag) => (
-                    <span key={tag} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium border border-indigo-100">
+                    <span key={tag} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 font-medium border border-indigo-100">
                       {tag}
                       <button onClick={() => removeTag(tag)} className="text-indigo-400 hover:text-red-500 leading-none ml-0.5">×</button>
                     </span>
@@ -185,35 +193,25 @@ export default function LecturePage({ lectureId }: Props) {
                 <div className="flex gap-2">
                   <input
                     autoFocus
-                    className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-indigo-200"
+                    className="flex-1 text-xs border border-gray-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-indigo-200"
                     placeholder="Add tag (press Enter)"
                     value={tagInput}
                     onChange={(e) => setTagInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
                   />
-                  <button onClick={addTag} className="text-xs px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-medium border border-indigo-200">
+                  <button onClick={addTag} className="text-xs px-3 py-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-medium border border-indigo-200">
                     Add
                   </button>
                 </div>
-                {/* Suggestions: tags already used in this course, not yet in draft */}
                 {(() => {
-                  const suggestions = [
-                    ...new Set(
-                      (course?.lectures ?? [])
-                        .filter((l) => l.id !== lectureId)
-                        .flatMap((l) => l.tags ?? [])
-                    ),
-                  ].filter((t) => !tagsDraft.includes(t))
+                  const suggestions = [...new Set((course?.lectures ?? []).filter((l) => l.id !== lectureId).flatMap((l) => l.tags ?? []))].filter((t) => !tagsDraft.includes(t))
                   if (suggestions.length === 0) return null
                   return (
                     <div className="flex flex-wrap gap-1.5">
                       <span className="text-xs text-gray-400 self-center">Existing:</span>
                       {suggestions.map((t) => (
-                        <button
-                          key={t}
-                          onClick={() => setTagsDraft((prev) => [...prev, t])}
-                          className="text-xs px-2 py-0.5 rounded-full border border-dashed border-indigo-200 text-indigo-500 hover:bg-indigo-50 transition-colors"
-                        >
+                        <button key={t} onClick={() => setTagsDraft((prev) => [...prev, t])}
+                          className="text-xs px-2.5 py-1 rounded-full border border-dashed border-indigo-200 text-indigo-500 hover:bg-indigo-50 transition-colors">
                           + {t}
                         </button>
                       ))}
@@ -221,262 +219,179 @@ export default function LecturePage({ lectureId }: Props) {
                   )
                 })()}
                 <div className="flex items-center gap-2">
-                  {updateTags.error && (
-                    <span className="text-xs text-red-500">{(updateTags.error as Error).message}</span>
-                  )}
-                  <button
-                    onClick={() => setEditingTags(false)}
-                    className="text-xs text-gray-400 hover:text-gray-600"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => updateTags.mutate(tagsDraft)}
-                    disabled={updateTags.isPending}
-                    className="text-xs px-3 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 font-medium"
-                  >
+                  {updateTags.error && <span className="text-xs text-red-500">{(updateTags.error as Error).message}</span>}
+                  <button onClick={() => setEditingTags(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+                  <button onClick={() => updateTags.mutate(tagsDraft)} disabled={updateTags.isPending}
+                    className="text-xs px-3 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 font-medium">
                     {updateTags.isPending ? 'Saving…' : 'Save tags'}
                   </button>
                 </div>
               </div>
             ) : (
-              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {lecture.tags?.map((tag) => (
-                  <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium border border-indigo-100">
+                  <span key={tag} className="text-xs px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-600 font-medium border border-indigo-100">
                     {tag}
                   </span>
                 ))}
-                <button
-                  onClick={startEditingTags}
-                  className="text-xs text-gray-400 hover:text-indigo-500 transition-colors"
-                  title="Edit tags"
-                >
+                <button onClick={startEditingTags} className="text-xs text-gray-400 hover:text-indigo-500 transition-colors">
                   {lecture.tags?.length > 0 ? 'Edit tags' : '+ Add tags'}
                 </button>
               </div>
             )}
           </div>
-          {confirmDelete ? (
-            <div className="flex items-center gap-2 shrink-0 mt-1">
-              <span className="text-xs text-gray-500">Delete?</span>
-              <button onClick={() => del.mutate()} className="text-xs text-red-500 font-semibold hover:text-red-700">Delete</button>
-              <button onClick={() => setConfirmDelete(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="shrink-0 text-gray-300 hover:text-red-400 transition-colors text-2xl leading-none mt-1"
-              title="Delete lecture"
-            >
-              ×
+        </section>
+
+        {/* Content card */}
+        <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden mb-4">
+          {/* Tabs */}
+          <div className="flex border-b border-gray-100 px-1 pt-1 gap-1">
+            <button onClick={() => setTab('flashcards')}
+              className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-colors ${tab === 'flashcards' ? 'text-indigo-700 bg-indigo-50' : 'text-gray-500 hover:text-gray-700'}`}>
+              Flashcards ({lecture.flashcards.length})
             </button>
-          )}
-        </div>
-
-        {/* Tabs */}
-        <div className="flex rounded-xl bg-gray-100 p-1 gap-1">
-          <button
-            onClick={() => setTab('flashcards')}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              tab === 'flashcards' ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Flashcards ({lecture.flashcards.length})
-          </button>
-          <button
-            onClick={() => setTab('notes')}
-            className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-              tab === 'notes' ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Notes
-          </button>
-          {lecture.transcript && (
-            <button
-              onClick={() => setTab('transcript')}
-              className={`flex-1 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                tab === 'transcript' ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              Transcript
+            <button onClick={() => setTab('notes')}
+              className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-colors ${tab === 'notes' ? 'text-indigo-700 bg-indigo-50' : 'text-gray-500 hover:text-gray-700'}`}>
+              Notes
             </button>
-          )}
-        </div>
-
-        {/* Regenerate alert */}
-        {updateTranscript.isSuccess && !editingTranscript && (
-          regenerate.isSuccess ? (
-            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-2.5">
-              <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-              <p className="text-xs text-green-700 font-medium">Notes and flashcards regenerated.</p>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
-              <p className="text-xs text-amber-800 font-medium">Transcript updated — regenerate notes and flashcards to match?</p>
-              <div className="flex items-center gap-2 shrink-0">
-                {regenerate.error && (
-                  <span className="text-xs text-red-500">{(regenerate.error as Error).message}</span>
-                )}
-                <button
-                  onClick={() => regenerate.mutate()}
-                  disabled={regenerate.isPending}
-                  className="text-xs px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition-colors font-medium"
-                >
-                  {regenerate.isPending ? 'Regenerating…' : 'Regenerate'}
-                </button>
-              </div>
-            </div>
-          )
-        )}
-
-        {/* Flashcards view */}
-        {tab === 'flashcards' && (
-          <div className="flex flex-col gap-4">
-            <div className="flex justify-end">
-              <button
-                onClick={async () => {
-                  setAnkiExporting(true)
-                  try {
-                    await downloadFile(`/api/lectures/${lectureId}/anki/`, `${lecture.title}.apkg`)
-                  } catch (e) {
-                    alert((e as Error).message)
-                  } finally {
-                    setAnkiExporting(false)
-                  }
-                }}
-                disabled={ankiExporting}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors font-medium"
-              >
-                {ankiExporting ? 'Exporting…' : 'Export to Anki'}
+            {lecture.transcript && (
+              <button onClick={() => setTab('transcript')}
+                className={`px-4 py-2.5 text-sm font-semibold rounded-t-lg transition-colors ${tab === 'transcript' ? 'text-indigo-700 bg-indigo-50' : 'text-gray-500 hover:text-gray-700'}`}>
+                Transcript
               </button>
-            </div>
-            <FlashCard
-              front={lecture.flashcards[cardIndex].front}
-              back={lecture.flashcards[cardIndex].back}
-              index={cardIndex}
-              total={lecture.flashcards.length}
-              flipped={cardFlipped}
-              onFlip={() => setCardFlipped(!cardFlipped)}
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => goToCard(Math.max(0, cardIndex - 1))}
-                disabled={cardIndex === 0}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-30 transition-colors"
-              >
-                ← Prev
-              </button>
-              <button
-                onClick={() => goToCard(Math.min(lecture.flashcards.length - 1, cardIndex + 1))}
-                disabled={cardIndex === lecture.flashcards.length - 1}
-                className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-30 transition-colors"
-              >
-                Next →
-              </button>
-            </div>
-            <p className="text-xs text-gray-400 text-center">Arrow keys to navigate · Space to flip</p>
+            )}
           </div>
-        )}
 
-        {/* Notes view */}
-        {tab === 'notes' && (
-          <div className="flex flex-col gap-3">
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={triggerPrint}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
-              >
-                Export PDF
-              </button>
-              <button
-                onClick={copyNotes}
-                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
-              >
-                {copied ? 'Copied!' : 'Copy notes'}
-              </button>
-            </div>
-            <div className="bg-gray-50 rounded-2xl p-5">
-              <NotesViewer notes={lecture.notes} />
-            </div>
-          </div>
-        )}
-        {printPortal}
-
-        {/* Transcript view */}
-        {tab === 'transcript' && lecture.transcript && (
-          <div className="flex flex-col gap-2">
-            <div className="flex justify-end">
-              {editingTranscript ? (
-                <div className="flex items-center gap-2">
-                  {updateTranscript.error && (
-                    <span className="text-xs text-red-500">{(updateTranscript.error as Error).message}</span>
-                  )}
-                  <button
-                    onClick={() => { setEditingTranscript(false); updateTranscript.reset() }}
-                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors font-medium"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={() => updateTranscript.mutate(transcriptDraft)}
-                    disabled={updateTranscript.isPending}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors font-medium"
-                  >
-                    {updateTranscript.isPending ? 'Saving…' : 'Save'}
-                  </button>
+          <div className="p-5">
+            {/* Regenerate alert */}
+            {updateTranscript.isSuccess && !editingTranscript && (
+              regenerate.isSuccess ? (
+                <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-4">
+                  <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                  <p className="text-xs text-green-700 font-medium">Notes and flashcards regenerated.</p>
                 </div>
               ) : (
-                <button
-                  onClick={() => { setTranscriptDraft(lecture.transcript); setEditingTranscript(true); updateTranscript.reset() }}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
-                >
-                  Edit
-                </button>
-              )}
-            </div>
-            {editingTranscript ? (
-              <textarea
-                autoFocus
-                className="w-full bg-gray-50 rounded-2xl p-5 max-h-96 text-sm text-gray-700 leading-relaxed font-mono resize-none outline-none focus:ring-2 focus:ring-indigo-200 border border-indigo-200 overflow-y-auto"
-                rows={12}
-                value={transcriptDraft}
-                onChange={(e) => setTranscriptDraft(e.target.value)}
-              />
-            ) : (
-              <div className="bg-gray-50 rounded-2xl p-5 max-h-96 overflow-y-auto">
-                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap font-mono">
-                  {lecture.transcript}
-                </p>
+                <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+                  <p className="text-xs text-amber-800 font-medium">Transcript updated — regenerate notes and flashcards to match?</p>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {regenerate.error && <span className="text-xs text-red-500">{(regenerate.error as Error).message}</span>}
+                    <button onClick={() => regenerate.mutate()} disabled={regenerate.isPending}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition-colors font-medium">
+                      {regenerate.isPending ? 'Regenerating…' : 'Regenerate'}
+                    </button>
+                  </div>
+                </div>
+              )
+            )}
+
+            {/* Flashcards */}
+            {tab === 'flashcards' && (
+              <div className="flex flex-col gap-4">
+                <div className="flex justify-end">
+                  <button
+                    onClick={async () => {
+                      setAnkiExporting(true)
+                      try { await downloadFile(`/api/lectures/${lectureId}/anki/`, `${lecture.title}.apkg`) }
+                      catch (e) { alert((e as Error).message) }
+                      finally { setAnkiExporting(false) }
+                    }}
+                    disabled={ankiExporting}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors font-medium"
+                  >
+                    {ankiExporting ? 'Exporting…' : 'Export to Anki'}
+                  </button>
+                </div>
+                <FlashCard
+                  front={lecture.flashcards[cardIndex].front}
+                  back={lecture.flashcards[cardIndex].back}
+                  index={cardIndex}
+                  total={lecture.flashcards.length}
+                  flipped={cardFlipped}
+                  onFlip={() => setCardFlipped(!cardFlipped)}
+                />
+                <div className="flex gap-3">
+                  <button onClick={() => goToCard(Math.max(0, cardIndex - 1))} disabled={cardIndex === 0}
+                    className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-30 transition-colors">
+                    ← Prev
+                  </button>
+                  <button onClick={() => goToCard(Math.min(lecture.flashcards.length - 1, cardIndex + 1))} disabled={cardIndex === lecture.flashcards.length - 1}
+                    className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-30 transition-colors">
+                    Next →
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 text-center">Arrow keys to navigate · Space to flip</p>
+              </div>
+            )}
+
+            {/* Notes */}
+            {tab === 'notes' && (
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-end gap-2">
+                  <button onClick={triggerPrint} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium">Export PDF</button>
+                  <button onClick={copyNotes} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium">
+                    {copied ? 'Copied!' : 'Copy notes'}
+                  </button>
+                </div>
+                <div className="bg-[#fafafa] rounded-xl p-5">
+                  <NotesViewer notes={lecture.notes} />
+                </div>
+              </div>
+            )}
+            {printPortal}
+
+            {/* Transcript */}
+            {tab === 'transcript' && lecture.transcript && (
+              <div className="flex flex-col gap-2">
+                <div className="flex justify-end">
+                  {editingTranscript ? (
+                    <div className="flex items-center gap-2">
+                      {updateTranscript.error && <span className="text-xs text-red-500">{(updateTranscript.error as Error).message}</span>}
+                      <button onClick={() => { setEditingTranscript(false); updateTranscript.reset() }}
+                        className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors font-medium">Cancel</button>
+                      <button onClick={() => updateTranscript.mutate(transcriptDraft)} disabled={updateTranscript.isPending}
+                        className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors font-medium">
+                        {updateTranscript.isPending ? 'Saving…' : 'Save'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setTranscriptDraft(lecture.transcript); setEditingTranscript(true); updateTranscript.reset() }}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium">Edit</button>
+                  )}
+                </div>
+                {editingTranscript ? (
+                  <textarea autoFocus
+                    className="w-full bg-[#fafafa] rounded-xl p-4 max-h-96 text-sm text-gray-700 leading-relaxed font-mono resize-none outline-none focus:ring-2 focus:ring-indigo-200 border border-indigo-200 overflow-y-auto"
+                    rows={12} value={transcriptDraft} onChange={(e) => setTranscriptDraft(e.target.value)} />
+                ) : (
+                  <div className="bg-[#fafafa] rounded-xl p-4 max-h-96 overflow-y-auto">
+                    <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap font-mono">{lecture.transcript}</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
+        </div>
 
         {/* Prev / Next lecture navigation */}
         {(prevId !== null || nextId !== null) && (
-          <div className="flex gap-3 pt-2 border-t border-gray-100">
+          <div className="flex gap-3 pb-16">
             {prevId !== null ? (
-              <Link
-                to="/lectures/$lectureId"
-                params={{ lectureId: String(prevId) }}
-                className="flex-1 py-2 text-sm text-indigo-600 hover:text-indigo-800 font-medium"
-              >
+              <Link to="/lectures/$lectureId" params={{ lectureId: String(prevId) }}
+                className="flex-1 py-2.5 text-sm text-indigo-500 hover:text-indigo-700 font-medium transition-colors">
                 ← Prev lecture
               </Link>
             ) : <div className="flex-1" />}
             {nextId !== null ? (
-              <Link
-                to="/lectures/$lectureId"
-                params={{ lectureId: String(nextId) }}
-                className="flex-1 py-2 text-sm text-right text-indigo-600 hover:text-indigo-800 font-medium"
-              >
+              <Link to="/lectures/$lectureId" params={{ lectureId: String(nextId) }}
+                className="flex-1 py-2.5 text-sm text-right text-indigo-500 hover:text-indigo-700 font-medium transition-colors">
                 Next lecture →
               </Link>
             ) : <div className="flex-1" />}
           </div>
         )}
+        {!prevId && !nextId && <div className="pb-16" />}
       </div>
     </div>
   )

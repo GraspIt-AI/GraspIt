@@ -10,7 +10,7 @@ import { getAccessToken } from '../authStore'
 type LoadingStep = 'idle' | 'uploading' | 'transcribing' | 'generating'
 
 const STEP_LABELS: Record<Exclude<LoadingStep, 'idle'>, string> = {
-  uploading: 'Uploading audio',
+  uploading: 'Uploading',
   transcribing: 'Transcribing',
   generating: 'Generating flashcards',
 }
@@ -30,6 +30,7 @@ export default function RecordPage() {
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
   const isLoading = loadingStep !== 'idle'
+  const hasAnyInput = !!(audioBlob || photos.length > 0 || contextFiles.length > 0)
 
   function clearTimers() {
     timersRef.current.forEach(clearTimeout)
@@ -79,17 +80,20 @@ export default function RecordPage() {
   }
 
   async function handleGenerate() {
-    if (!audioBlob) return
     setError(null)
     setCancelled(false)
     setLoadingStep('uploading')
 
     // Time-based step progression (backend is a single synchronous call)
-    timersRef.current.push(setTimeout(() => setLoadingStep('transcribing'), 2000))
-    timersRef.current.push(setTimeout(() => setLoadingStep('generating'), 12000))
+    if (audioBlob) {
+      timersRef.current.push(setTimeout(() => setLoadingStep('transcribing'), 2000))
+      timersRef.current.push(setTimeout(() => setLoadingStep('generating'), 12000))
+    } else {
+      timersRef.current.push(setTimeout(() => setLoadingStep('generating'), 1000))
+    }
 
     const form = new FormData()
-    form.append('audio', audioBlob, audioFilename)
+    if (audioBlob) form.append('audio', audioBlob, audioFilename)
     photos.forEach((f) => form.append('images', f))
     contextFiles.forEach((f) => form.append('files', f))
 
@@ -108,7 +112,7 @@ export default function RecordPage() {
       setResults(data)
       navigate({ to: '/results' })
     } catch (e: unknown) {
-      if (e instanceof Error && e.name === 'AbortError') return // cancelled — no error shown
+      if (e instanceof Error && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : 'Something went wrong')
     } finally {
       clearTimers()
@@ -117,151 +121,167 @@ export default function RecordPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex flex-col items-center justify-center px-4 py-12">
-      <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl p-6 sm:p-8 flex flex-col gap-8">
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <Link to="/courses" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-            ← My Courses
-          </Link>
-          <UserMenu />
-        </div>
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">BrainJam</h1>
-          <p className="text-gray-500 mt-1 text-sm sm:text-base">Record your lecture. We'll handle the notes.</p>
-        </div>
+    <div className="min-h-screen bg-[#fafafa]">
+      {/* Nav */}
+      <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 px-5 sm:px-6 h-14 flex items-center justify-between">
+        <Link to="/" className="text-sm font-medium text-indigo-500 hover:text-indigo-700 transition-colors">
+          ← Home
+        </Link>
+        <UserMenu />
+      </nav>
 
-        {/* Audio */}
-        <section className="flex flex-col items-center gap-4">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Step 1 — Record</h2>
-          <AudioRecorder
-            onRecordingComplete={(blob, filename) => {
-              setAudioBlob(blob)
-              setAudioFilename(filename)
-              setError(null)
-            }}
-            onReset={() => {
-              setAudioBlob(null)
-              setError(null)
-            }}
-          />
+      <div className="max-w-2xl mx-auto px-5 sm:px-6">
+        {/* Page header */}
+        <section className="pt-10 pb-8">
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight">New Lecture</h1>
+          <p className="text-lg text-gray-400 mt-2">Record, upload, or snap a photo.</p>
         </section>
 
-        <hr className="border-gray-100" />
+        {/* Input sections */}
+        <div className="flex flex-col gap-4 pb-16">
 
-        {/* Photos */}
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Step 2 — Add board photos (optional)</h2>
-          <PhotoCapture photos={photos} onAdd={addPhotos} onRemove={removePhoto} />
-        </section>
+          {/* Audio */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">
+              Audio — optional
+            </p>
+            <AudioRecorder
+              onRecordingComplete={(blob, filename) => {
+                setAudioBlob(blob)
+                setAudioFilename(filename)
+                setError(null)
+              }}
+              onReset={() => {
+                setAudioBlob(null)
+                setError(null)
+              }}
+            />
+          </div>
 
-        <hr className="border-gray-100" />
+          {/* Photos */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+              Board photos — optional
+            </p>
+            <PhotoCapture photos={photos} onAdd={addPhotos} onRemove={removePhoto} />
+          </div>
 
-        {/* Context files */}
-        <section className="flex flex-col gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Step 3 — Attach context files (optional)</h2>
-          <ContextFiles files={contextFiles} onAdd={addContextFiles} onRemove={removeContextFile} />
-        </section>
+          {/* Context files */}
+          <div className="bg-white border border-gray-100 rounded-2xl p-5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">
+              Context files — optional
+            </p>
+            <ContextFiles files={contextFiles} onAdd={addContextFiles} onRemove={removeContextFile} />
+          </div>
 
-        <hr className="border-gray-100" />
-
-        {/* Generate */}
-        <section className="flex flex-col items-center gap-3">
-          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Step 4 — Generate</h2>
-
-          {error && (
-            <div className="w-full bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex flex-col gap-1">
-              <span className="font-medium">{error}</span>
-              {audioBlob && (
-                <span className="text-red-500 text-xs">Your recording is preserved — just try again.</span>
-              )}
-            </div>
-          )}
-
-          {cancelled && !error && (
-            <div className="w-full bg-gray-50 border border-gray-200 text-gray-600 rounded-xl px-4 py-3 text-sm">
-              Generation cancelled.
-            </div>
-          )}
-
-          {/* Loading step indicator */}
-          {isLoading && (
-            <div className="w-full flex items-center justify-between gap-1 py-2">
-              {STEPS.map((step, i) => {
-                const stepIndex = STEPS.indexOf(loadingStep as Exclude<LoadingStep, 'idle'>)
-                const isDone = i < stepIndex
-                const isActive = i === stepIndex
-                return (
-                  <div key={step} className="flex-1 flex flex-col items-center gap-1">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                      isDone ? 'bg-green-500 text-white' :
-                      isActive ? 'bg-indigo-600 text-white animate-pulse' :
-                      'bg-gray-100 text-gray-400'
-                    }`}>
-                      {isDone ? (
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                      ) : (
-                        i + 1
-                      )}
-                    </div>
-                    <span className={`text-[10px] text-center leading-tight ${
-                      isActive ? 'text-indigo-600 font-semibold' :
-                      isDone ? 'text-green-600' :
-                      'text-gray-400'
-                    }`}>
-                      {STEP_LABELS[step]}
-                    </span>
-                    {i < STEPS.length - 1 && (
-                      <div className={`absolute hidden`} />
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          <button
-            onClick={handleGenerate}
-            disabled={!audioBlob || isLoading}
-            className="w-full py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold text-base sm:text-lg shadow-md transition-all active:scale-95"
-          >
-            {isLoading ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                </svg>
-                <span className="truncate">{STEP_LABELS[loadingStep as Exclude<LoadingStep, 'idle'>]}…</span>
-              </span>
-            ) : (
-              'Generate Flashcards & Notes'
+          {/* Generate */}
+          <div className="flex flex-col gap-3 pt-2">
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl px-5 py-4 text-sm flex flex-col gap-1">
+                <span className="font-medium">{error}</span>
+                {audioBlob && (
+                  <span className="text-red-500 text-xs">Your audio is preserved — just try again.</span>
+                )}
+              </div>
             )}
-          </button>
 
-          {isLoading && (
+            {cancelled && !error && (
+              <div className="bg-white border border-gray-200 text-gray-500 rounded-2xl px-5 py-4 text-sm">
+                Generation cancelled.
+              </div>
+            )}
+
+            {/* Loading step indicator */}
+            {isLoading && (
+              <div className="bg-white border border-gray-100 rounded-2xl px-5 py-4 flex items-center justify-between gap-2">
+                {STEPS.map((step, i) => {
+                  const stepIndex = STEPS.indexOf(loadingStep as Exclude<LoadingStep, 'idle'>)
+                  const isDone = i < stepIndex
+                  const isActive = i === stepIndex
+                  return (
+                    <div key={step} className="flex-1 flex flex-col items-center gap-1.5">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                        isDone ? 'bg-green-500 text-white' :
+                        isActive ? 'bg-indigo-600 text-white animate-pulse' :
+                        'bg-gray-100 text-gray-400'
+                      }`}>
+                        {isDone ? (
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                          </svg>
+                        ) : (
+                          i + 1
+                        )}
+                      </div>
+                      <span className={`text-[10px] text-center leading-tight font-medium ${
+                        isActive ? 'text-indigo-600' :
+                        isDone ? 'text-green-600' :
+                        'text-gray-400'
+                      }`}>
+                        {STEP_LABELS[step]}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Main CTA — matches home page style */}
             <button
-              onClick={handleCancel}
-              className="text-sm text-gray-400 hover:text-gray-600 underline"
+              onClick={handleGenerate}
+              disabled={!hasAnyInput || isLoading}
+              className="w-full flex items-center justify-between px-6 py-5 rounded-2xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg hover:shadow-xl hover:from-indigo-700 hover:to-violet-700 disabled:from-gray-200 disabled:to-gray-200 disabled:text-gray-400 disabled:shadow-none transition-all active:scale-[0.99] group"
             >
-              Cancel
+              <div className="flex items-center gap-4">
+                <div className="w-10 h-10 rounded-xl bg-white/15 disabled:bg-gray-100 flex items-center justify-center shrink-0">
+                  {isLoading ? (
+                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+                    </svg>
+                  )}
+                </div>
+                <div className="text-left">
+                  <div className="text-base font-bold leading-tight">
+                    {isLoading ? STEP_LABELS[loadingStep as Exclude<LoadingStep, 'idle'>] + '…' : 'Generate Flashcards & Notes'}
+                  </div>
+                  {!isLoading && (
+                    <div className="text-sm text-white/60 mt-0.5">
+                      {hasAnyInput ? 'Ready to process your lecture' : 'Add audio, a photo, or a file above'}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {!isLoading && (
+                <svg className="w-5 h-5 text-white/60 group-hover:translate-x-1 transition-transform shrink-0" fill="none" stroke="currentColor" strokeWidth={2.5} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+              )}
             </button>
-          )}
 
-          {!audioBlob && !isLoading && (
-            <p className="text-xs text-gray-400">Record audio first to enable generation</p>
-          )}
+            {isLoading && (
+              <button
+                onClick={handleCancel}
+                className="text-sm text-gray-400 hover:text-gray-600 transition-colors text-center"
+              >
+                Cancel
+              </button>
+            )}
 
-          {!isLoading && (
-            <button
-              onClick={handleLoadDemo}
-              className="text-xs text-gray-400 hover:text-indigo-500 underline transition-colors"
-            >
-              Load demo data
-            </button>
-          )}
-        </section>
+            {!isLoading && (
+              <button
+                onClick={handleLoadDemo}
+                className="text-xs text-gray-400 hover:text-indigo-500 underline transition-colors text-center"
+              >
+                Load demo data
+              </button>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -1,4 +1,5 @@
 import { createRootRoute, createRoute, redirect } from '@tanstack/react-router'
+import HomePage from './routes/home'
 import RecordPage from './routes/index'
 import ResultsPage from './routes/results'
 import CoursesPage from './routes/courses'
@@ -19,7 +20,7 @@ const loginRoute = createRoute({
   path: '/login',
   component: LoginPage,
   beforeLoad: () => {
-    if (isAuthenticated()) throw redirect({ to: '/courses' })
+    if (isAuthenticated()) throw redirect({ to: '/' })
   },
 })
 
@@ -28,7 +29,7 @@ const registerRoute = createRoute({
   path: '/register',
   component: RegisterPage,
   beforeLoad: () => {
-    if (isAuthenticated()) throw redirect({ to: '/courses' })
+    if (isAuthenticated()) throw redirect({ to: '/' })
   },
 })
 
@@ -45,9 +46,15 @@ const authLayout = createRoute({
 
 // ── Protected routes (children of authLayout) ─────────────────────────────────
 
-const recordRoute = createRoute({
+const homeRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/',
+  component: HomePage,
+})
+
+const recordRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/record',
   component: RecordPage,
 })
 
@@ -94,6 +101,7 @@ export const routeTree = rootRoute.addChildren([
   loginRoute,
   registerRoute,
   authLayout.addChildren([
+    homeRoute,
     recordRoute,
     resultsRoute,
     coursesRoute,

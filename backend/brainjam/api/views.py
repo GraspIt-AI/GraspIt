@@ -31,7 +31,11 @@ User = get_user_model()
 _SYSTEM_PROMPT = (
     'You are a study assistant. Given a lecture transcript and optional context materials '
     '(photos, slides, PDFs, documents), '
-    'output ONLY valid JSON with exactly this shape — no markdown fences, no extra keys:\n'
+    'output ONLY valid JSON — no markdown fences, no extra keys.\n\n'
+    'IMPORTANT: If the provided content is too vague, too short, or lacks enough subject matter to generate '
+    'meaningful study materials WITHOUT hallucinating or inventing facts, output this instead:\n'
+    '{"insufficient_content": true, "reason": "one sentence explaining what is missing"}\n\n'
+    'Otherwise output exactly this shape:\n'
     '{"title": "short lecture title", "summary": "1-2 sentence overview", '
     '"tags": ["tag1", "tag2"], '
     '"flashcards": [{"front": "question", "back": "answer"}], "notes": "markdown string"}\n\n'
@@ -43,12 +47,14 @@ _SYSTEM_PROMPT = (
     '- Prefer concept-understanding questions over simple trivia (ask "why" and "how", not just "what").\n'
     '- Always create a dedicated flashcard for every equation, formula, or definition mentioned.\n'
     '- Avoid duplicating overlapping topics — merge similar cards into one.\n'
-    '- If context documents (slides, PDFs) are provided, prioritise concepts from them.\n\n'
+    '- If context documents (slides, PDFs) are provided, prioritise concepts from them.\n'
+    '- Do NOT invent or assume facts not present in the provided content.\n\n'
     'NOTES RULES:\n'
     '- Start with a "## Key Takeaways" section (3-5 bullet points summarising the most important ideas).\n'
     '- Then use ## H2 section headers for each major topic.\n'
     '- Use bullet points under each header. Bold (**like this**) all key terms and important concepts.\n'
     '- The notes should be a complete, well-structured markdown document a student can study from.\n'
+    '- Do NOT invent or assume facts not present in the provided content.\n'
 )
 
 
@@ -156,66 +162,69 @@ def process(request):
     image_files = request.FILES.getlist('images')
     context_files = request.FILES.getlist('files')
 
-    if not audio_file:
-        return Response({'error': 'No audio file provided.'}, status=status.HTTP_400_BAD_REQUEST)
-
-    # Reject files over 25 MB before reading
-    if audio_file.size and audio_file.size > 25 * 1024 * 1024:
+    if not audio_file and not image_files and not context_files:
         return Response(
-            {'error': 'Audio file too large (max 25 MB). Please record in shorter segments.'},
-            status=413,
+            {'error': 'Please provide at least an audio recording, a photo, or a file.'},
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # 1. Transcribe audio with Groq (Whisper large v3) — 30s timeout
-    # Detect correct MIME type from content-type or filename extension
-    _MIME_FIXES = {
-        'audio/x-m4a': 'audio/m4a',
-        'audio/x-wav': 'audio/wav',
-        'audio/x-flac': 'audio/flac',
-        'audio/x-ogg': 'audio/ogg',
-        'audio/mpeg': 'audio/mpeg',   # mp3
-        'audio/webm': 'audio/webm',
-    }
-    _EXT_MIME = {
-        '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/m4a',
-        '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.aac': 'audio/aac',
-        '.webm': 'audio/webm', '.mp4': 'audio/mp4', '.mpeg': 'audio/mpeg',
-        '.mpga': 'audio/mpeg',
-    }
-    raw_mime = (audio_file.content_type or '').split(';')[0].strip()
-    ext = '.' + audio_file.name.rsplit('.', 1)[-1].lower() if '.' in audio_file.name else ''
-    audio_mime = (
-        _MIME_FIXES.get(raw_mime)
-        or raw_mime
-        or _EXT_MIME.get(ext, 'audio/webm')
-    )
-    if not audio_mime or audio_mime == 'application/octet-stream':
-        audio_mime = _EXT_MIME.get(ext, 'audio/webm')
-    print(f'[GROQ] audio file: {audio_file.name}, raw_mime: {raw_mime}, resolved: {audio_mime}')
-
-    try:
-        groq_client = OpenAI(
-            api_key=settings.GROQ_API_KEY,
-            base_url='https://api.groq.com/openai/v1',
-            timeout=30.0,
-        )
-        transcript_response = groq_client.audio.transcriptions.create(
-            model='whisper-large-v3',
-            file=(audio_file.name, audio_file.read(), audio_mime),
-        )
-        transcript = transcript_response.text.strip()
-        print(f'[GROQ] transcript length: {len(transcript)}, preview: {repr(transcript[:200])}')
-        if not transcript:
+    # 1. Transcribe audio with Groq (Whisper large v3) — 30s timeout (skipped if no audio)
+    transcript = ''
+    if audio_file:
+        # Reject files over 25 MB before reading
+        if audio_file.size and audio_file.size > 25 * 1024 * 1024:
             return Response(
-                {'error': 'Whisper could not detect any speech in the recording. Please speak clearly and try again.'},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                {'error': 'Audio file too large (max 25 MB). Please record in shorter segments.'},
+                status=413,
             )
-    except Exception as e:
-        print(f'[GROQ ERROR] {e}')
-        return Response({'error': f'Transcription failed: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+        _MIME_FIXES = {
+            'audio/x-m4a': 'audio/m4a',
+            'audio/x-wav': 'audio/wav',
+            'audio/x-flac': 'audio/flac',
+            'audio/x-ogg': 'audio/ogg',
+            'audio/mpeg': 'audio/mpeg',
+            'audio/webm': 'audio/webm',
+        }
+        _EXT_MIME = {
+            '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/m4a',
+            '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.aac': 'audio/aac',
+            '.webm': 'audio/webm', '.mp4': 'audio/mp4', '.mpeg': 'audio/mpeg',
+            '.mpga': 'audio/mpeg',
+        }
+        raw_mime = (audio_file.content_type or '').split(';')[0].strip()
+        ext = '.' + audio_file.name.rsplit('.', 1)[-1].lower() if '.' in audio_file.name else ''
+        audio_mime = _MIME_FIXES.get(raw_mime) or raw_mime or _EXT_MIME.get(ext, 'audio/webm')
+        if not audio_mime or audio_mime == 'application/octet-stream':
+            audio_mime = _EXT_MIME.get(ext, 'audio/webm')
+        print(f'[GROQ] audio file: {audio_file.name}, raw_mime: {raw_mime}, resolved: {audio_mime}')
+
+        try:
+            groq_client = OpenAI(
+                api_key=settings.GROQ_API_KEY,
+                base_url='https://api.groq.com/openai/v1',
+                timeout=30.0,
+            )
+            transcript_response = groq_client.audio.transcriptions.create(
+                model='whisper-large-v3',
+                file=(audio_file.name, audio_file.read(), audio_mime),
+            )
+            transcript = transcript_response.text.strip()
+            print(f'[GROQ] transcript length: {len(transcript)}, preview: {repr(transcript[:200])}')
+            if not transcript and not image_files and not context_files:
+                return Response(
+                    {'error': 'Whisper could not detect any speech in the recording. Please speak clearly and try again.'},
+                    status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                )
+        except Exception as e:
+            print(f'[GROQ ERROR] {e}')
+            return Response({'error': f'Transcription failed: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
 
     # 2. Build Gemini prompt parts
-    parts: list = [f'Lecture transcript:\n\n{transcript}']
+    if len(transcript) >= 10:
+        parts: list = [f'Lecture transcript:\n\n{transcript}']
+    else:
+        parts: list = ['No audio transcript is available. Generate flashcards, notes, title, summary, and tags based solely on the provided images and context files.']
 
     for img in image_files:
         img_bytes = img.read()
@@ -328,6 +337,12 @@ def process(request):
     # 3. Generate flashcards + notes with Gemini
     try:
         result = _run_gemini(parts)
+        if result.get('insufficient_content'):
+            reason = result.get('reason', 'Not enough content to generate study materials.')
+            return Response(
+                {'error': f'Not enough content to generate flashcards: {reason} Please add more audio, photos, or files.'},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
         print(f'[GEMINI] flashcards count: {len(result.get("flashcards", []))}')
     except TimeoutError:
         return Response({'error': 'Generation timed out. Please try again.'}, status=status.HTTP_504_GATEWAY_TIMEOUT)
@@ -381,6 +396,37 @@ def course_detail(request, pk):
 
 
 # ── Lectures ──────────────────────────────────────────────────────────────────
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def default_course(request):
+    """Find or create the user's Miscellaneous catch-all course."""
+    course, _ = Course.objects.get_or_create(
+        user=request.user,
+        name='Miscellaneous',
+        defaults={'color': '#6b7280', 'description': 'Auto-saved lectures'},
+    )
+    return Response({'id': course.id, 'name': course.name})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def lectures_recent(request):
+    lectures = (
+        Lecture.objects.filter(course__user=request.user)
+        .select_related('course')
+        .order_by('-created_at')[:4]
+    )
+    return Response([{
+        'id': l.id,
+        'title': l.title,
+        'created_at': l.created_at,
+        'course_id': l.course.id,
+        'course_name': l.course.name,
+        'course_color': l.course.color,
+        'flashcard_count': l.flashcards.count(),
+    } for l in lectures])
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

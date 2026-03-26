@@ -17,7 +17,7 @@ export default function LoginPage() {
     try {
       const { tokens, user } = await auth.login({ email: email.trim().toLowerCase(), password })
       setAuth(tokens, user)
-      navigate({ to: '/courses' })
+      navigate({ to: '/' })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed')
     } finally {
@@ -26,54 +26,58 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm bg-white rounded-3xl shadow-xl p-8 flex flex-col gap-6">
-        <div className="text-center">
+    <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center px-4">
+      <div className="w-full max-w-sm flex flex-col gap-6">
+        {/* Brand */}
+        <div className="text-center mb-2">
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">BrainJam</h1>
-          <p className="text-gray-500 mt-1 text-sm">Sign in to your account</p>
+          <p className="text-gray-400 mt-1 text-sm">Sign in to continue learning</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</label>
-            <input
-              type="email"
-              autoComplete="email"
-              required
-              className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-
-          <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Password</label>
-            <input
-              type="password"
-              autoComplete="current-password"
-              required
-              className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
-              {error}
+        {/* Form card */}
+        <div className="bg-white border border-gray-100 rounded-2xl p-7 shadow-sm flex flex-col gap-5">
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Email</label>
+              <input
+                type="email"
+                autoComplete="email"
+                required
+                className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300 bg-white transition-shadow"
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
             </div>
-          )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold text-sm shadow-md transition-all"
-          >
-            {loading ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Password</label>
+              <input
+                type="password"
+                autoComplete="current-password"
+                required
+                className="border border-gray-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-indigo-300 bg-white transition-shadow"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
+                {error}
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-200 disabled:text-gray-400 text-white font-semibold text-sm transition-colors active:scale-[0.99]"
+            >
+              {loading ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+        </div>
 
         <p className="text-center text-sm text-gray-500">
           Don't have an account?{' '}
