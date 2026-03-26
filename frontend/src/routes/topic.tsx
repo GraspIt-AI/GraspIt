@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from '@tanstack/react-router'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type ExamQuestion } from '../api'
 import FlashCard from '../components/FlashCard'
 import NotesViewer from '../components/NotesViewer'
@@ -13,7 +13,7 @@ interface Props {
 
 // ── Inline exam flow ───────────────────────────────────────────────────────────
 
-function ExamFlow({ questions, onRetry }: { questions: ExamQuestion[]; onRetry: () => void }) {
+function ExamFlow({ questions, onRetry, onComplete }: { questions: ExamQuestion[]; onRetry: () => void; onComplete: (score: number, total: number) => void }) {
   const [index, setIndex] = useState(0)
   const [answers, setAnswers] = useState<(boolean | null)[]>(Array(questions.length).fill(null))
   const [done, setDone] = useState(false)
@@ -34,7 +34,9 @@ function ExamFlow({ questions, onRetry }: { questions: ExamQuestion[]; onRetry: 
       setNumericInput('')
       setNumericRevealed(false)
     } else {
+      const finalScore = na.filter(Boolean).length
       setDone(true)
+      onComplete(finalScore, questions.length)
     }
   }
 
@@ -240,6 +242,7 @@ function ExamFlow({ questions, onRetry }: { questions: ExamQuestion[]; onRetry: 
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function TopicPage({ courseId, tag }: Props) {
+  const qc = useQueryClient()
   const [tab, setTab] = useState<'flashcards' | 'notes' | 'exam'>('flashcards')
   const [cardIndex, setCardIndex] = useState(0)
   const [cardFlipped, setCardFlipped] = useState(false)
@@ -274,6 +277,12 @@ export default function TopicPage({ courseId, tag }: Props) {
       setExamQuestions(normalizeQuestions(res.questions))
       setExamStale(false)
     },
+  })
+
+  const submitScore = useMutation({
+    mutationFn: ({ score, total }: { score: number; total: number }) =>
+      api.courses.submitScore(courseId, tag, score, total),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['course', courseId] }),
   })
 
   const allFlashcards = data?.lectures.flatMap((l) =>
@@ -463,6 +472,7 @@ export default function TopicPage({ courseId, tag }: Props) {
               <ExamFlow
                 questions={examQuestions}
                 onRetry={() => { setExamQuestions(null); setExamStale(false); examMutation.reset() }}
+                onComplete={(score, total) => submitScore.mutate({ score, total })}
               />
             </div>
           ) : (

@@ -17,8 +17,16 @@ export interface LectureListItem {
   flashcard_count: number
 }
 
+export interface ExamScore {
+  tag: string
+  last_score: number | null
+  last_total: number | null
+  attempts: number
+}
+
 export interface CourseDetail extends Omit<CourseListItem, 'lecture_count'> {
   lectures: LectureListItem[]
+  exam_scores: ExamScore[]
 }
 
 export interface LectureDetail {
@@ -94,6 +102,8 @@ export const api = {
       req<{ found: boolean; questions?: ExamQuestion[]; stale?: boolean; generated_at?: string }>(
         `/api/courses/${id}/exam/?tag=${encodeURIComponent(tag)}`
       ),
+    submitScore: (id: number, tag: string, score: number, total: number) =>
+      req<void>(`/api/courses/${id}/exam/`, { method: 'PATCH', body: JSON.stringify({ tag, score, total }) }),
     exam: (id: number, tag: string) =>
       req<{ found: boolean; questions: ExamQuestion[]; stale: boolean }>(
         `/api/courses/${id}/exam/`, { method: 'POST', body: JSON.stringify({ tag }) }

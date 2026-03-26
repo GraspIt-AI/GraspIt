@@ -110,6 +110,30 @@ export default function CourseDetailPage({ courseId }: Props) {
   }
 
   const allTags = [...new Set(course.lectures.flatMap((l) => l.tags ?? []))]
+  const scoreMap = Object.fromEntries((course.exam_scores ?? []).map((e) => [e.tag, e]))
+
+  function scorePct(tag: string) {
+    const s = scoreMap[tag]
+    if (!s || s.last_score == null || !s.last_total) return null
+    return Math.round((s.last_score / s.last_total) * 100)
+  }
+
+  function scoreBadge(tag: string) {
+    const pct = scorePct(tag)
+    if (pct == null) return null
+    const color = pct >= 70 ? 'bg-green-100 text-green-700' : pct >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'
+    const s = scoreMap[tag]
+    return <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-full ${color}`}>{s!.last_score}/{s!.last_total}</span>
+  }
+
+  const attemptedScores = (course.exam_scores ?? []).filter((e) => e.last_score != null && e.last_total)
+  const avgPct = attemptedScores.length
+    ? Math.round(attemptedScores.reduce((sum, e) => sum + (e.last_score! / e.last_total!) * 100, 0) / attemptedScores.length)
+    : null
+
+  const weakTags = allTags
+    .filter((tag) => { const pct = scorePct(tag); return pct != null && pct < 70 })
+    .sort((a, b) => (scorePct(a) ?? 0) - (scorePct(b) ?? 0))
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 px-4 py-12">
@@ -180,6 +204,14 @@ export default function CourseDetailPage({ courseId }: Props) {
               <p className="text-xs text-gray-500 mt-0.5">Topics</p>
             </div>
           )}
+          {avgPct !== null && (
+            <div className="bg-white rounded-2xl px-5 py-3 border border-gray-100 text-center flex-1">
+              <p className={`text-2xl font-bold ${avgPct >= 70 ? 'text-green-600' : avgPct >= 50 ? 'text-amber-500' : 'text-red-500'}`}>
+                {avgPct}%
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">Avg score</p>
+            </div>
+          )}
         </div>
 
         {/* Topics */}
@@ -195,6 +227,30 @@ export default function CourseDetailPage({ courseId }: Props) {
                   className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border border-indigo-200 bg-white text-indigo-700 font-medium hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-colors"
                 >
                   {tag}
+                  {scoreBadge(tag) && <span onClick={(e) => e.preventDefault()}>{scoreBadge(tag)}</span>}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Needs Review */}
+        {weakTags.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-red-400">Needs Review</h2>
+            <div className="flex flex-col gap-2">
+              {weakTags.map((tag) => (
+                <Link
+                  key={tag}
+                  to="/courses/$courseId/topics/$tag"
+                  params={{ courseId: String(courseId), tag }}
+                  className="flex items-center justify-between px-4 py-3 bg-white rounded-xl border border-red-100 hover:border-red-300 hover:shadow-sm transition-all"
+                >
+                  <div className="flex items-center gap-2">
+                    {scoreBadge(tag)}
+                    <span className="text-sm font-medium text-gray-700">{tag}</span>
+                  </div>
+                  <span className="text-gray-400 text-sm">→</span>
                 </Link>
               ))}
             </div>

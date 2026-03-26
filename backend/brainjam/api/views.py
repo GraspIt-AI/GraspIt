@@ -8,6 +8,7 @@ from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
+from django.db.models import F
 from rest_framework_simplejwt.tokens import RefreshToken
 from openai import OpenAI
 from google import genai
@@ -352,7 +353,11 @@ def course_detail(request, pk):
     course = get_object_or_404(Course, pk=pk, user=request.user)
 
     if request.method == 'GET':
-        return Response(CourseDetailSerializer(course).data)
+        data = CourseDetailSerializer(course).data
+        data['exam_scores'] = list(
+            course.exams.values('tag', 'last_score', 'last_total', 'attempts')
+        )
+        return Response(data)
 
     if request.method == 'PUT':
         serializer = CourseListSerializer(course, data=request.data, partial=True)
@@ -458,7 +463,7 @@ _EXAM_PROMPT = (
 )
 
 
-@api_view(['GET', 'POST'])
+@api_view(['GET', 'POST', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def course_exam(request, pk):
     course = get_object_or_404(Course, pk=pk, user=request.user)
@@ -479,6 +484,19 @@ def course_exam(request, pk):
             'stale': stale,
             'generated_at': exam.updated_at,
         })
+
+    if request.method == 'PATCH':
+        tag = (request.data.get('tag') or '').strip()
+        score = request.data.get('score')
+        total = request.data.get('total')
+        if not tag or score is None or total is None:
+            return Response({'error': 'tag, score, and total are required.'}, status=400)
+        exam = get_object_or_404(TopicExam, course=course, tag=tag)
+        exam.last_score = int(score)
+        exam.last_total = int(total)
+        exam.attempts = F('attempts') + 1
+        exam.save(update_fields=['last_score', 'last_total', 'attempts'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     # POST: generate (and save/overwrite)
     tag = (request.data.get('tag') or '').strip()

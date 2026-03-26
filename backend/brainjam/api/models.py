@@ -40,6 +40,9 @@ class TopicExam(models.Model):
     tag = models.CharField(max_length=200)
     questions = models.JSONField(default=list)
     lecture_snapshot = models.JSONField(default=list)  # sorted list of lecture PKs at generation time
+    last_score = models.PositiveIntegerField(null=True, blank=True)
+    last_total = models.PositiveIntegerField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
