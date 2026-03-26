@@ -230,7 +230,48 @@ Two separate buttons:
 ### ResultsPage save-to-course panel
 After generating, a panel appears at the bottom to save the lecture:
 - Pick an existing course or create a new one inline (name + color picker)
-- On save: POST `/api/lectures/` with all data; shows "Lecture saved!" + link to `/lectures/:id`
+- On save: POST `/api/lectures/` with all data; shows "Lecture saved!" + `← Back to course` + `View saved →` links
+
+---
+
+## Navigation & UX Design
+
+### RecordPage (`index.tsx`)
+- Header row: `← My Courses` link (left) + `UserMenu` (right)
+- Title `BrainJam` + subtitle sit below the header row in a separate block
+- No dead-end — user can always get back to `/courses`
+
+### ResultsPage (`results.tsx`)
+- Header: `← Record new` link (goes to `/`) + `My Courses` link (goes to `/courses`)
+- After saving: green confirmation row shows `← Back to course` (to `/courses/:id`) and `View saved →` (to `/lectures/:id`)
+
+### CourseDetailPage (`course.tsx`)
+- Delete course: inline confirmation row (`Delete course? / Delete / Cancel`) instead of `confirm()` dialog
+- Delete lecture (in `LectureCard`): same inline pattern per-card via local `confirmDelete` state
+
+### LecturePage (`lecture.tsx`)
+- Delete: inline confirmation row (`Delete? / Delete / Cancel`) — no `confirm()` dialog
+- **Prev / Next lecture navigation**: fetches sibling lectures via `useQuery(['course', lecture.course])`, computes `prevId` / `nextId` from the ordered `lectures` array, renders `← Prev lecture` / `Next lecture →` links at the bottom of the card. Hidden when at first/last lecture.
+
+### CoursesPage (`courses.tsx`)
+- Empty state copy: *"Welcome to BrainJam! Create your first course to start organising your lectures."*
+
+### Inline delete confirmation pattern
+Used in `course.tsx` (both LectureCard and CourseDetailPage) and `lecture.tsx`:
+```tsx
+const [confirmDelete, setConfirmDelete] = useState(false)
+
+{confirmDelete ? (
+  <div className="flex items-center gap-2">
+    <span className="text-xs text-gray-500">Are you sure?</span>
+    <button onClick={() => del.mutate()} className="text-xs text-red-500 font-semibold hover:text-red-700">Delete</button>
+    <button onClick={() => setConfirmDelete(false)} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+  </div>
+) : (
+  <button onClick={() => setConfirmDelete(true)} ...>×</button>
+)}
+```
+No `window.confirm()` dialogs are used anywhere in the app.
 
 ---
 
@@ -274,6 +315,7 @@ Access tokens are stateless — no server-side session. Each device logs in inde
 - `load_dotenv` must be called after `BASE_DIR` is defined in settings.py
 - `npm run dev` may fail with `ENOSPC: System limit for number of file watchers reached` → use `CHOKIDAR_USEPOLLING=1 npm run dev`
 - `Outlet` from TanStack Router v1 is a `React.memo` object (`typeof === 'object'`), not a function — still a valid React component, works as `component: Outlet` in `createRoute`
+- `window.confirm()` on mobile is unstyled and blocks the UI — replaced everywhere with inline confirmation pattern (see Navigation & UX Design section)
 
 ---
 
