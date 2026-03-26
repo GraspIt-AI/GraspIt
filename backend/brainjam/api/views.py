@@ -510,6 +510,10 @@ def lecture_regenerate(request, pk):
     except Exception as e:
         return Response({'error': f'Generation failed: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
 
+    if result.get('insufficient_content'):
+        reason = result.get('reason', 'Not enough content to regenerate study materials.')
+        return Response({'error': f'Not enough content to regenerate: {reason}'}, status=422)
+
     lecture.title = result.get('title', lecture.title)
     lecture.summary = result.get('summary', lecture.summary)
     lecture.notes = result.get('notes', lecture.notes)
