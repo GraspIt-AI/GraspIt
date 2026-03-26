@@ -5,6 +5,7 @@ import FlashCard from '../components/FlashCard'
 import NotesViewer from '../components/NotesViewer'
 import { getResults } from '../store'
 import { api, type CourseListItem } from '../api'
+import { usePrintNotes } from '../usePrintNotes'
 
 const COLORS = [
   '#6366f1', '#8b5cf6', '#ec4899', '#f59e0b',
@@ -170,6 +171,7 @@ export default function ResultsPage() {
 
   const { flashcards, notes, transcript: rawTranscript, title = 'Your Lecture', summary = '' } = state
   const transcript = editedTranscript ?? rawTranscript
+  const { triggerPrint, printPortal } = usePrintNotes(title, notes)
 
   // Keyboard navigation
   const handleKey = useCallback((e: KeyboardEvent) => {
@@ -296,7 +298,13 @@ export default function ResultsPage() {
         {/* Notes view */}
         {tab === 'notes' && (
           <div className="flex flex-col gap-3">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={triggerPrint}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
+              >
+                Export PDF
+              </button>
               <button
                 onClick={copyNotes}
                 className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
@@ -309,6 +317,7 @@ export default function ResultsPage() {
             </div>
           </div>
         )}
+        {printPortal}
 
         {/* Transcript view */}
         {tab === 'transcript' && transcript && (

@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '../api'
 import FlashCard from '../components/FlashCard'
 import NotesViewer from '../components/NotesViewer'
+import { usePrintNotes } from '../usePrintNotes'
 
 interface Props {
   lectureId: number
@@ -53,6 +54,7 @@ export default function LecturePage({ lectureId }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editingTranscript, setEditingTranscript] = useState(false)
   const [transcriptDraft, setTranscriptDraft] = useState('')
+  const { triggerPrint, printPortal } = usePrintNotes(lecture?.title ?? '', lecture?.notes ?? '')
 
   const handleKey = useCallback((e: KeyboardEvent) => {
     if (!lecture || tab !== 'flashcards') return
@@ -211,7 +213,13 @@ export default function LecturePage({ lectureId }: Props) {
         {/* Notes view */}
         {tab === 'notes' && (
           <div className="flex flex-col gap-3">
-            <div className="flex justify-end">
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={triggerPrint}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
+              >
+                Export PDF
+              </button>
               <button
                 onClick={copyNotes}
                 className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
@@ -224,6 +232,7 @@ export default function LecturePage({ lectureId }: Props) {
             </div>
           </div>
         )}
+        {printPortal}
 
         {/* Transcript view */}
         {tab === 'transcript' && lecture.transcript && (
