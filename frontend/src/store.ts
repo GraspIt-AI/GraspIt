@@ -6,6 +6,7 @@ export interface Flashcard {
 export interface LectureResults {
   flashcards: Flashcard[]
   notes: string
+  transcript: string
 }
 
 // Simple module-level store to pass results between routes
