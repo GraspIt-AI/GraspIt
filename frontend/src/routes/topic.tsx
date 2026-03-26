@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api, type ExamQuestion } from '../api'
+import { api, downloadFile, type ExamQuestion } from '../api'
 import FlashCard from '../components/FlashCard'
 import NotesViewer from '../components/NotesViewer'
 import { usePrintNotes } from '../usePrintNotes'
@@ -248,6 +248,7 @@ export default function TopicPage({ courseId, tag }: Props) {
   const [cardFlipped, setCardFlipped] = useState(false)
   const [examQuestions, setExamQuestions] = useState<ExamQuestion[] | null>(null)
   const [examStale, setExamStale] = useState(false)
+  const [ankiExporting, setAnkiExporting] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['course-topic', courseId, tag],
@@ -383,6 +384,27 @@ export default function TopicPage({ courseId, tag }: Props) {
             <p className="text-sm text-gray-500 text-center py-8">No flashcards for this topic yet.</p>
           ) : (
             <div className="flex flex-col gap-4">
+              <div className="flex justify-end">
+                <button
+                  onClick={async () => {
+                    setAnkiExporting(true)
+                    try {
+                      await downloadFile(
+                        `/api/courses/${courseId}/anki/?tag=${encodeURIComponent(tag)}`,
+                        `${tag}.apkg`
+                      )
+                    } catch (e) {
+                      alert((e as Error).message)
+                    } finally {
+                      setAnkiExporting(false)
+                    }
+                  }}
+                  disabled={ankiExporting}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors font-medium"
+                >
+                  {ankiExporting ? 'Exporting…' : 'Export to Anki'}
+                </button>
+              </div>
               <p className="text-xs text-gray-400 text-center">
                 From: <span className="font-medium text-gray-600">{allFlashcards[cardIndex].lectureTitle}</span>
               </p>

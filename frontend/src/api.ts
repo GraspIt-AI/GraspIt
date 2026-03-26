@@ -63,6 +63,26 @@ export interface TopicData {
   }[]
 }
 
+export async function downloadFile(url: string, filename: string): Promise<void> {
+  const { getAccessToken } = await import('./authStore')
+  const token = getAccessToken()
+  const res = await fetch(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  })
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error ?? 'Download failed')
+  }
+  const blob = await res.blob()
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(a.href)
+}
+
 async function req<T>(url: string, options?: RequestInit): Promise<T> {
   const { getAccessToken } = await import('./authStore')
   const token = getAccessToken()

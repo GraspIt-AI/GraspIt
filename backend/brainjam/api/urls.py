@@ -18,6 +18,9 @@ urlpatterns = [
     path('courses/<int:pk>/topic/', views.course_topic, name='course-topic'),
     # Search
     path('search/', views.search, name='search'),
+    # Anki export
+    path('courses/<int:pk>/anki/', views.course_anki, name='course-anki'),
+    path('lectures/<int:pk>/anki/', views.lecture_anki, name='lecture-anki'),
     # Lectures
     path('lectures/', views.lectures_create, name='lectures-create'),
     path('lectures/<int:pk>/', views.lecture_detail, name='lecture-detail'),

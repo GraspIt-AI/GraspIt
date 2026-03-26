@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { api } from '../api'
+import { api, downloadFile } from '../api'
 import FlashCard from '../components/FlashCard'
 import NotesViewer from '../components/NotesViewer'
 import { usePrintNotes } from '../usePrintNotes'
@@ -68,6 +68,7 @@ export default function LecturePage({ lectureId }: Props) {
   const [cardIndex, setCardIndex] = useState(0)
   const [cardFlipped, setCardFlipped] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [ankiExporting, setAnkiExporting] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editingTranscript, setEditingTranscript] = useState(false)
   const [transcriptDraft, setTranscriptDraft] = useState('')
@@ -333,6 +334,24 @@ export default function LecturePage({ lectureId }: Props) {
         {/* Flashcards view */}
         {tab === 'flashcards' && (
           <div className="flex flex-col gap-4">
+            <div className="flex justify-end">
+              <button
+                onClick={async () => {
+                  setAnkiExporting(true)
+                  try {
+                    await downloadFile(`/api/lectures/${lectureId}/anki/`, `${lecture.title}.apkg`)
+                  } catch (e) {
+                    alert((e as Error).message)
+                  } finally {
+                    setAnkiExporting(false)
+                  }
+                }}
+                disabled={ankiExporting}
+                className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors font-medium"
+              >
+                {ankiExporting ? 'Exporting…' : 'Export to Anki'}
+              </button>
+            </div>
             <FlashCard
               front={lecture.flashcards[cardIndex].front}
               back={lecture.flashcards[cardIndex].back}

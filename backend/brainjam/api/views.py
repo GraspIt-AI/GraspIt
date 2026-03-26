@@ -1,6 +1,10 @@
 import json
+import re
+import os
+import tempfile
 import concurrent.futures
 from django.conf import settings
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from rest_framework.decorators import api_view, parser_classes, permission_classes
@@ -20,6 +24,7 @@ from .serializers import (
 )
 from PIL import Image
 import io
+import genanki
 
 User = get_user_model()
 
@@ -557,6 +562,80 @@ def course_exam(request, pk):
     except Exception as e:
         print(f'[EXAM ERROR] {e}')
         return Response({'error': f'Exam generation failed: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+_ANKI_MODEL = genanki.Model(
+    1607392319,  # fixed ID so repeated imports don't create duplicate model definitions in Anki
+    'BrainJam Basic',
+    fields=[{'name': 'Front'}, {'name': 'Back'}],
+    templates=[{
+        'name': 'Card 1',
+        'qfmt': '{{Front}}',
+        'afmt': '{{FrontSide}}<hr id=answer>{{Back}}',
+    }],
+)
+
+
+def _make_anki_pkg(deck_name: str, cards: list[dict]) -> bytes:
+    """Return .apkg bytes for a list of {'front': ..., 'back': ...} dicts."""
+    import random
+    deck = genanki.Deck(random.randrange(1 << 30, 1 << 31), deck_name)
+    for c in cards:
+        deck.add_note(genanki.Note(model=_ANKI_MODEL, fields=[c['front'], c['back']]))
+    pkg = genanki.Package(deck)
+    with tempfile.NamedTemporaryFile(suffix='.apkg', delete=False) as f:
+        tmp = f.name
+    try:
+        pkg.write_to_file(tmp)
+        with open(tmp, 'rb') as f:
+            return f.read()
+    finally:
+        os.unlink(tmp)
+
+
+def _safe_filename(name: str) -> str:
+    return re.sub(r'[^\w\s-]', '', name).strip().replace(' ', '_') or 'brainjam'
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def lecture_anki(request, pk):
+    lecture = get_object_or_404(Lecture, pk=pk, course__user=request.user)
+    cards = [{'front': fc.front, 'back': fc.back} for fc in lecture.flashcards.order_by('order')]
+    if not cards:
+        return Response({'error': 'No flashcards to export.'}, status=400)
+    deck_name = f'{lecture.course.name} — {lecture.title}'
+    apkg = _make_anki_pkg(deck_name, cards)
+    filename = _safe_filename(lecture.title) + '.apkg'
+    resp = HttpResponse(apkg, content_type='application/octet-stream')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def course_anki(request, pk):
+    course = get_object_or_404(Course, pk=pk, user=request.user)
+    tag = (request.query_params.get('tag') or '').strip()
+    if tag:
+        lectures = [l for l in course.lectures.prefetch_related('flashcards') if tag in (l.tags or [])]
+        deck_name = f'{course.name} — {tag}'
+        filename = _safe_filename(f'{course.name}_{tag}') + '.apkg'
+    else:
+        lectures = list(course.lectures.prefetch_related('flashcards'))
+        deck_name = course.name
+        filename = _safe_filename(course.name) + '.apkg'
+    cards = [
+        {'front': fc.front, 'back': fc.back}
+        for lec in lectures
+        for fc in lec.flashcards.order_by('order')
+    ]
+    if not cards:
+        return Response({'error': 'No flashcards to export.'}, status=400)
+    apkg = _make_anki_pkg(deck_name, cards)
+    resp = HttpResponse(apkg, content_type='application/octet-stream')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
 
 
 @api_view(['GET'])
