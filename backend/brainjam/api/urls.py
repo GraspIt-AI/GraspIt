@@ -14,6 +14,15 @@ urlpatterns = [
     # Courses
     path('courses/', views.courses_list, name='courses-list'),
     path('courses/<int:pk>/', views.course_detail, name='course-detail'),
+    path('courses/<int:pk>/exam/', views.course_exam, name='course-exam'),
+    path('courses/<int:pk>/topic/', views.course_topic, name='course-topic'),
+    # Search
+    path('search/', views.search, name='search'),
+    # Chat
+    path('courses/<int:pk>/chat/', views.course_chat, name='course-chat'),
+    # Anki export
+    path('courses/<int:pk>/anki/', views.course_anki, name='course-anki'),
+    path('lectures/<int:pk>/anki/', views.lecture_anki, name='lecture-anki'),
     # Lectures
     path('lectures/', views.lectures_create, name='lectures-create'),
     path('lectures/<int:pk>/', views.lecture_detail, name='lecture-detail'),

@@ -25,6 +25,7 @@ class Lecture(models.Model):
     summary = models.TextField(blank=True)
     transcript = models.TextField(blank=True)
     notes = models.TextField(blank=True)
+    tags = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -32,6 +33,24 @@ class Lecture(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class TopicExam(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='exams')
+    tag = models.CharField(max_length=200)
+    questions = models.JSONField(default=list)
+    lecture_snapshot = models.JSONField(default=list)  # sorted list of lecture PKs at generation time
+    last_score = models.PositiveIntegerField(null=True, blank=True)
+    last_total = models.PositiveIntegerField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('course', 'tag')]
+
+    def __str__(self):
+        return f'{self.course.name} — {self.tag}'
 
 
 class Flashcard(models.Model):

@@ -1,6 +1,10 @@
 import json
+import re
+import os
+import tempfile
 import concurrent.futures
 from django.conf import settings
+from django.http import HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from rest_framework.decorators import api_view, parser_classes, permission_classes
@@ -8,17 +12,19 @@ from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
+from django.db.models import F
 from rest_framework_simplejwt.tokens import RefreshToken
 from openai import OpenAI
 from google import genai
 from google.genai import types
-from .models import Course, Lecture, Flashcard
+from .models import Course, Lecture, Flashcard, TopicExam
 from .serializers import (
     CourseListSerializer, CourseDetailSerializer,
     LectureDetailSerializer,
 )
 from PIL import Image
 import io
+import genanki
 
 User = get_user_model()
 
@@ -27,9 +33,11 @@ _SYSTEM_PROMPT = (
     '(photos, slides, PDFs, documents), '
     'output ONLY valid JSON with exactly this shape — no markdown fences, no extra keys:\n'
     '{"title": "short lecture title", "summary": "1-2 sentence overview", '
+    '"tags": ["tag1", "tag2"], '
     '"flashcards": [{"front": "question", "back": "answer"}], "notes": "markdown string"}\n\n'
     'TITLE: A concise descriptive title for this lecture (5-10 words, e.g. "Introduction to Photosynthesis").\n'
-    'SUMMARY: 1-2 sentences summarising what the lecture covered.\n\n'
+    'SUMMARY: 1-2 sentences summarising what the lecture covered.\n'
+    'TAGS: Generate up to 6 short topic tags (2-4 words each) naming the key subjects covered, e.g. "Krebs Cycle", "ATP Synthesis", "Cell Respiration". Use as few as needed — if the lecture only covers one or two topics, one or two tags is fine. These will be used to filter and group lectures.\n\n'
     'FLASHCARD RULES:\n'
     '- Generate 10-20 flashcards covering the key concepts.\n'
     '- Prefer concept-understanding questions over simple trivia (ask "why" and "how", not just "what").\n'
@@ -350,7 +358,11 @@ def course_detail(request, pk):
     course = get_object_or_404(Course, pk=pk, user=request.user)
 
     if request.method == 'GET':
-        return Response(CourseDetailSerializer(course).data)
+        data = CourseDetailSerializer(course).data
+        data['exam_scores'] = list(
+            course.exams.values('tag', 'last_score', 'last_total', 'attempts')
+        )
+        return Response(data)
 
     if request.method == 'PUT':
         serializer = CourseListSerializer(course, data=request.data, partial=True)
@@ -387,9 +399,15 @@ def lecture_detail(request, pk):
         return Response(LectureDetailSerializer(lecture).data)
 
     if request.method == 'PATCH':
+        fields = []
         if 'transcript' in request.data:
             lecture.transcript = request.data['transcript']
-            lecture.save(update_fields=['transcript'])
+            fields.append('transcript')
+        if 'tags' in request.data:
+            lecture.tags = request.data['tags']
+            fields.append('tags')
+        if fields:
+            lecture.save(update_fields=fields)
         return Response(LectureDetailSerializer(lecture).data)
 
     lecture.delete()
@@ -415,7 +433,8 @@ def lecture_regenerate(request, pk):
     lecture.title = result.get('title', lecture.title)
     lecture.summary = result.get('summary', lecture.summary)
     lecture.notes = result.get('notes', lecture.notes)
-    lecture.save(update_fields=['title', 'summary', 'notes'])
+    lecture.tags = result.get('tags', lecture.tags)
+    lecture.save(update_fields=['title', 'summary', 'notes', 'tags'])
 
     lecture.flashcards.all().delete()
     for i, fc in enumerate(result.get('flashcards', [])):
@@ -423,3 +442,359 @@ def lecture_regenerate(request, pk):
 
     print(f'[REGENERATE] lecture {pk}: {len(result.get("flashcards", []))} flashcards')
     return Response(LectureDetailSerializer(lecture).data)
+
+
+_EXAM_PROMPT = (
+    'You are an expert exam writer. Given lecture transcripts and notes on a specific topic, '
+    'generate a challenging exam that closely resembles a real university exam.\n\n'
+    'Output ONLY valid JSON — an array with NO markdown fences. Each question must have a "type" field.\n\n'
+    'MCQ format (conceptual, reasoning, comparison questions):\n'
+    '{"type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct": 0, '
+    '"explanation": "Why the correct answer is right and why each wrong option is incorrect."}\n\n'
+    'Numeric format (calculations, derivations, specific values):\n'
+    '{"type": "numeric", "question": "... (Show all working.)", "answer": "42.5 kJ/mol", '
+    '"explanation": "Full step-by-step worked solution: state the formula, substitute values, show every step, final answer with units."}\n\n'
+    'Short answer format (explain, describe, compare, analyse — anything needing a written response):\n'
+    '{"type": "short_answer", "question": "...", '
+    '"answer": "A comprehensive model answer covering all key points a student should mention."}\n\n'
+    'RULES:\n'
+    '- Generate 8-12 questions total.\n'
+    '- Choose types based on what fits the content naturally. A well-rounded exam uses all three types.\n'
+    '- "correct" in MCQ is the 0-based index of the correct option.\n'
+    '- Questions should test deep understanding: reasoning, application, multi-step problems.\n'
+    '- Numeric explanations must show every step; short_answer model answers must be thorough.\n'
+    '- Vary difficulty: roughly 30% easy, 50% medium, 20% hard.\n'
+    '- All MCQ distractors should be plausible — common mistakes or close values, not obviously wrong.\n'
+)
+
+
+@api_view(['GET', 'POST', 'PATCH'])
+@permission_classes([IsAuthenticated])
+def course_exam(request, pk):
+    course = get_object_or_404(Course, pk=pk, user=request.user)
+
+    if request.method == 'GET':
+        tag = (request.query_params.get('tag') or '').strip()
+        if not tag:
+            return Response({'error': 'Tag is required.'}, status=400)
+        try:
+            exam = TopicExam.objects.get(course=course, tag=tag)
+        except TopicExam.DoesNotExist:
+            return Response({'found': False})
+        current_ids = sorted(l.pk for l in course.lectures.all() if tag in (l.tags or []))
+        stale = current_ids != sorted(exam.lecture_snapshot)
+        return Response({
+            'found': True,
+            'questions': exam.questions,
+            'stale': stale,
+            'generated_at': exam.updated_at,
+        })
+
+    if request.method == 'PATCH':
+        tag = (request.data.get('tag') or '').strip()
+        score = request.data.get('score')
+        total = request.data.get('total')
+        if not tag or score is None or total is None:
+            return Response({'error': 'tag, score, and total are required.'}, status=400)
+        exam = get_object_or_404(TopicExam, course=course, tag=tag)
+        exam.last_score = int(score)
+        exam.last_total = int(total)
+        exam.attempts = F('attempts') + 1
+        exam.save(update_fields=['last_score', 'last_total', 'attempts'])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # POST: generate (and save/overwrite)
+    tag = (request.data.get('tag') or '').strip()
+    if not tag:
+        return Response({'error': 'Tag is required.'}, status=400)
+
+    lectures = [l for l in course.lectures.all() if tag in (l.tags or [])]
+    if not lectures:
+        return Response({'error': f'No lectures found with tag "{tag}".'}, status=404)
+
+    parts = [f'Topic: {tag}\n\nYou are generating an exam covering the following lecture materials on this topic.\n']
+    for lec in lectures:
+        parts.append(f'--- Lecture: {lec.title} ---\nTranscript:\n{lec.transcript}\n\nNotes:\n{lec.notes}\n')
+
+    try:
+        gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+        def _generate():
+            return gemini_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=['\n\n'.join(parts)],
+                config=types.GenerateContentConfig(
+                    system_instruction=_EXAM_PROMPT,
+                    max_output_tokens=8192,
+                    temperature=0.5,
+                ),
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_generate)
+            try:
+                response = future.result(timeout=90)
+            except concurrent.futures.TimeoutError:
+                raise TimeoutError('Exam generation timed out.')
+
+        raw = response.text.strip()
+        if raw.startswith('```'):
+            raw = raw.split('```')[1]
+            if raw.startswith('json'):
+                raw = raw[4:]
+        questions = json.loads(raw)
+
+        TopicExam.objects.update_or_create(
+            course=course,
+            tag=tag,
+            defaults={
+                'questions': questions,
+                'lecture_snapshot': sorted(l.pk for l in lectures),
+            },
+        )
+        print(f'[EXAM] course {pk}, tag="{tag}", lectures={len(lectures)}, questions={len(questions)}')
+        return Response({'found': True, 'questions': questions, 'stale': False})
+
+    except TimeoutError:
+        return Response({'error': 'Exam generation timed out. Please try again.'}, status=status.HTTP_504_GATEWAY_TIMEOUT)
+    except json.JSONDecodeError:
+        return Response({'error': 'Gemini returned malformed JSON. Try again.'}, status=status.HTTP_502_BAD_GATEWAY)
+    except Exception as e:
+        print(f'[EXAM ERROR] {e}')
+        return Response({'error': f'Exam generation failed: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+_ANKI_MODEL = genanki.Model(
+    1607392319,  # fixed ID so repeated imports don't create duplicate model definitions in Anki
+    'BrainJam Basic',
+    fields=[{'name': 'Front'}, {'name': 'Back'}],
+    templates=[{
+        'name': 'Card 1',
+        'qfmt': '{{Front}}',
+        'afmt': '{{FrontSide}}<hr id=answer>{{Back}}',
+    }],
+)
+
+
+def _make_anki_pkg(deck_name: str, cards: list[dict]) -> bytes:
+    """Return .apkg bytes for a list of {'front': ..., 'back': ...} dicts."""
+    import random
+    deck = genanki.Deck(random.randrange(1 << 30, 1 << 31), deck_name)
+    for c in cards:
+        deck.add_note(genanki.Note(model=_ANKI_MODEL, fields=[c['front'], c['back']]))
+    pkg = genanki.Package(deck)
+    with tempfile.NamedTemporaryFile(suffix='.apkg', delete=False) as f:
+        tmp = f.name
+    try:
+        pkg.write_to_file(tmp)
+        with open(tmp, 'rb') as f:
+            return f.read()
+    finally:
+        os.unlink(tmp)
+
+
+def _safe_filename(name: str) -> str:
+    return re.sub(r'[^\w\s-]', '', name).strip().replace(' ', '_') or 'brainjam'
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def lecture_anki(request, pk):
+    lecture = get_object_or_404(Lecture, pk=pk, course__user=request.user)
+    cards = [{'front': fc.front, 'back': fc.back} for fc in lecture.flashcards.order_by('order')]
+    if not cards:
+        return Response({'error': 'No flashcards to export.'}, status=400)
+    deck_name = f'{lecture.course.name} — {lecture.title}'
+    apkg = _make_anki_pkg(deck_name, cards)
+    filename = _safe_filename(lecture.title) + '.apkg'
+    resp = HttpResponse(apkg, content_type='application/octet-stream')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def course_anki(request, pk):
+    course = get_object_or_404(Course, pk=pk, user=request.user)
+    tag = (request.query_params.get('tag') or '').strip()
+    if tag:
+        lectures = [l for l in course.lectures.prefetch_related('flashcards') if tag in (l.tags or [])]
+        deck_name = f'{course.name} — {tag}'
+        filename = _safe_filename(f'{course.name}_{tag}') + '.apkg'
+    else:
+        lectures = list(course.lectures.prefetch_related('flashcards'))
+        deck_name = course.name
+        filename = _safe_filename(course.name) + '.apkg'
+    cards = [
+        {'front': fc.front, 'back': fc.back}
+        for lec in lectures
+        for fc in lec.flashcards.order_by('order')
+    ]
+    if not cards:
+        return Response({'error': 'No flashcards to export.'}, status=400)
+    apkg = _make_anki_pkg(deck_name, cards)
+    resp = HttpResponse(apkg, content_type='application/octet-stream')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+_CHAT_SYSTEM_PROMPT = (
+    'You are a study assistant for this course. '
+    'Answer questions based only on the course content provided. '
+    'Be concise but thorough. Reference specific lecture titles when relevant. '
+    "If a topic isn't covered in the lectures, say so clearly."
+)
+
+
+def _build_course_context(course):
+    parts = []
+    for lec in course.lectures.all():
+        chunk = f'=== Lecture: {lec.title} ===\n'
+        if lec.summary:
+            chunk += f'Summary: {lec.summary}\n'
+        if lec.transcript:
+            chunk += f'\nTranscript:\n{lec.transcript}\n'
+        if lec.notes:
+            chunk += f'\nNotes:\n{lec.notes}\n'
+        parts.append(chunk)
+    return '\n\n'.join(parts)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def course_chat(request, pk):
+    course = get_object_or_404(Course, pk=pk, user=request.user)
+    messages = request.data.get('messages', [])
+    if not messages:
+        return Response({'error': 'messages required.'}, status=400)
+
+    context = _build_course_context(course)
+    first_content = f'Course: {course.name}\n\nMaterials:\n\n{context}\n\n---\n\n{messages[0]["content"]}'
+    contents = [
+        types.Content(role='user', parts=[types.Part.from_text(text=first_content)])
+    ]
+    for msg in messages[1:]:
+        role = 'user' if msg['role'] == 'user' else 'model'
+        contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg['content'])]))
+
+    def event_stream():
+        try:
+            gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            for chunk in gemini_client.models.generate_content_stream(
+                model='gemini-2.5-flash',
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=_CHAT_SYSTEM_PROMPT,
+                    max_output_tokens=2048,
+                    temperature=0.7,
+                ),
+            ):
+                if chunk.text:
+                    yield f'data: {json.dumps({"text": chunk.text})}\n\n'
+        except Exception as e:
+            yield f'data: {json.dumps({"error": str(e)})}\n\n'
+        yield 'data: [DONE]\n\n'
+
+    resp = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    resp['Cache-Control'] = 'no-cache'
+    resp['X-Accel-Buffering'] = 'no'
+    return resp
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def search(request):
+    q = (request.query_params.get('q') or '').strip()
+    if len(q) < 2:
+        return Response({'topics': [], 'lectures': [], 'flashcards': []})
+
+    q_lower = q.lower()
+
+    lecture_qs = Lecture.objects.filter(course__user=request.user).select_related('course')
+    try:
+        course_id = int(request.query_params.get('course_id') or 0)
+        if course_id:
+            lecture_qs = lecture_qs.filter(course_id=course_id)
+    except (ValueError, TypeError):
+        pass
+
+    matched_lectures = []
+    matched_tags: dict = {}
+
+    for lec in lecture_qs:
+        for tag in (lec.tags or []):
+            if q_lower in tag.lower():
+                key = (lec.course_id, tag)
+                if key not in matched_tags:
+                    matched_tags[key] = {
+                        'tag': tag,
+                        'course_id': lec.course_id,
+                        'course_name': lec.course.name,
+                        'lecture_count': 0,
+                    }
+                matched_tags[key]['lecture_count'] += 1
+
+        if (
+            q_lower in lec.title.lower()
+            or q_lower in (lec.summary or '').lower()
+            or q_lower in (lec.notes or '').lower()
+            or any(q_lower in tag.lower() for tag in (lec.tags or []))
+        ):
+            matched_lectures.append({
+                'id': lec.id,
+                'title': lec.title,
+                'summary': lec.summary or '',
+                'course_id': lec.course_id,
+                'course_name': lec.course.name,
+                'tags': lec.tags or [],
+            })
+
+    flashcard_qs = Flashcard.objects.filter(
+        lecture__course__user=request.user
+    ).select_related('lecture__course')
+    if course_id:
+        flashcard_qs = flashcard_qs.filter(lecture__course_id=course_id)
+
+    matched_flashcards = []
+    for fc in flashcard_qs:
+        if q_lower in fc.front.lower() or q_lower in fc.back.lower():
+            matched_flashcards.append({
+                'id': fc.id,
+                'front': fc.front,
+                'back': fc.back,
+                'lecture_id': fc.lecture_id,
+                'lecture_title': fc.lecture.title,
+                'course_id': fc.lecture.course_id,
+                'course_name': fc.lecture.course.name,
+            })
+        if len(matched_flashcards) >= 5:
+            break
+
+    return Response({
+        'topics': list(matched_tags.values())[:6],
+        'lectures': matched_lectures[:6],
+        'flashcards': matched_flashcards[:5],
+    })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def course_topic(request, pk):
+    course = get_object_or_404(Course, pk=pk, user=request.user)
+    tag = (request.query_params.get('tag') or '').strip()
+    if not tag:
+        return Response({'error': 'Tag is required.'}, status=400)
+
+    lectures = [l for l in course.lectures.all() if tag in (l.tags or [])]
+    result = []
+    for lec in lectures:
+        result.append({
+            'id': lec.id,
+            'title': lec.title,
+            'notes': lec.notes,
+            'flashcards': [
+                {'front': fc.front, 'back': fc.back}
+                for fc in lec.flashcards.order_by('order')
+            ],
+        })
+    return Response({'tag': tag, 'course_name': course.name, 'lectures': result})
