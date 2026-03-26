@@ -37,6 +37,14 @@ export default function LecturePage({ lectureId }: Props) {
     },
   })
 
+  const regenerate = useMutation({
+    mutationFn: () => api.lectures.regenerate(lectureId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['lecture', lectureId] })
+      setTimeout(() => { regenerate.reset(); updateTranscript.reset() }, 3000)
+    },
+  })
+
   const { data: course } = useQuery({
     queryKey: ['course', lecture?.course],
     queryFn: () => api.courses.get(lecture!.course),
@@ -179,6 +187,34 @@ export default function LecturePage({ lectureId }: Props) {
           )}
         </div>
 
+        {/* Regenerate alert */}
+        {updateTranscript.isSuccess && !editingTranscript && (
+          regenerate.isSuccess ? (
+            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-xl px-4 py-2.5">
+              <svg className="w-4 h-4 text-green-600 shrink-0" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              <p className="text-xs text-green-700 font-medium">Notes and flashcards regenerated.</p>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5">
+              <p className="text-xs text-amber-800 font-medium">Transcript updated — regenerate notes and flashcards to match?</p>
+              <div className="flex items-center gap-2 shrink-0">
+                {regenerate.error && (
+                  <span className="text-xs text-red-500">{(regenerate.error as Error).message}</span>
+                )}
+                <button
+                  onClick={() => regenerate.mutate()}
+                  disabled={regenerate.isPending}
+                  className="text-xs px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-40 transition-colors font-medium"
+                >
+                  {regenerate.isPending ? 'Regenerating…' : 'Regenerate'}
+                </button>
+              </div>
+            </div>
+          )
+        )}
+
         {/* Flashcards view */}
         {tab === 'flashcards' && (
           <div className="flex flex-col gap-4">
@@ -244,7 +280,7 @@ export default function LecturePage({ lectureId }: Props) {
                     <span className="text-xs text-red-500">{(updateTranscript.error as Error).message}</span>
                   )}
                   <button
-                    onClick={() => setEditingTranscript(false)}
+                    onClick={() => { setEditingTranscript(false); updateTranscript.reset() }}
                     className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors font-medium"
                   >
                     Cancel
@@ -259,7 +295,7 @@ export default function LecturePage({ lectureId }: Props) {
                 </div>
               ) : (
                 <button
-                  onClick={() => { setTranscriptDraft(lecture.transcript); setEditingTranscript(true) }}
+                  onClick={() => { setTranscriptDraft(lecture.transcript); setEditingTranscript(true); updateTranscript.reset() }}
                   className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
                 >
                   Edit
