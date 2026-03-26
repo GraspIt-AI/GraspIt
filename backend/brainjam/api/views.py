@@ -1,15 +1,86 @@
 import json
 import concurrent.futures
 from django.conf import settings
-from rest_framework.decorators import api_view, parser_classes
-from rest_framework.parsers import MultiPartParser
+from django.shortcuts import get_object_or_404
+from django.contrib.auth import get_user_model
+from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.parsers import MultiPartParser, JSONParser
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
+from rest_framework_simplejwt.tokens import RefreshToken
 from openai import OpenAI
 from google import genai
 from google.genai import types
+from .models import Course, Lecture
+from .serializers import (
+    CourseListSerializer, CourseDetailSerializer,
+    LectureDetailSerializer,
+)
 from PIL import Image
 import io
+
+User = get_user_model()
+
+
+def _user_tokens(user):
+    refresh = RefreshToken.for_user(user)
+    return {'refresh': str(refresh), 'access': str(refresh.access_token)}
+
+
+def _user_data(user):
+    return {'id': user.id, 'email': user.email, 'username': user.username}
+
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register(request):
+    email = (request.data.get('email') or '').strip().lower()
+    username = (request.data.get('username') or '').strip()
+    password = request.data.get('password') or ''
+
+    if not email or not username or not password:
+        return Response({'error': 'Email, username, and password are required.'}, status=400)
+    if len(password) < 8:
+        return Response({'error': 'Password must be at least 8 characters.'}, status=400)
+    if User.objects.filter(email=email).exists():
+        return Response({'error': 'An account with this email already exists.'}, status=400)
+    if User.objects.filter(username__iexact=username).exists():
+        return Response({'error': 'This username is already taken.'}, status=400)
+
+    user = User.objects.create_user(email=email, username=username, password=password)
+    return Response({'tokens': _user_tokens(user), 'user': _user_data(user)}, status=201)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def login_view(request):
+    from django.contrib.auth import authenticate
+    email = (request.data.get('email') or '').strip().lower()
+    password = request.data.get('password') or ''
+    user = authenticate(request, email=email, password=password)
+    if user is None:
+        return Response({'error': 'Invalid email or password.'}, status=401)
+    return Response({'tokens': _user_tokens(user), 'user': _user_data(user)})
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def me(request):
+    return Response(_user_data(request.user))
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def logout_view(request):
+    try:
+        token = RefreshToken(request.data.get('refresh'))
+        token.blacklist()
+    except Exception:
+        pass  # token may already be invalid
+    return Response(status=204)
 
 
 @api_view(['POST'])
@@ -30,6 +101,32 @@ def process(request):
         )
 
     # 1. Transcribe audio with Groq (Whisper large v3) — 30s timeout
+    # Detect correct MIME type from content-type or filename extension
+    _MIME_FIXES = {
+        'audio/x-m4a': 'audio/m4a',
+        'audio/x-wav': 'audio/wav',
+        'audio/x-flac': 'audio/flac',
+        'audio/x-ogg': 'audio/ogg',
+        'audio/mpeg': 'audio/mpeg',   # mp3
+        'audio/webm': 'audio/webm',
+    }
+    _EXT_MIME = {
+        '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/m4a',
+        '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.aac': 'audio/aac',
+        '.webm': 'audio/webm', '.mp4': 'audio/mp4', '.mpeg': 'audio/mpeg',
+        '.mpga': 'audio/mpeg',
+    }
+    raw_mime = (audio_file.content_type or '').split(';')[0].strip()
+    ext = '.' + audio_file.name.rsplit('.', 1)[-1].lower() if '.' in audio_file.name else ''
+    audio_mime = (
+        _MIME_FIXES.get(raw_mime)
+        or raw_mime
+        or _EXT_MIME.get(ext, 'audio/webm')
+    )
+    if not audio_mime or audio_mime == 'application/octet-stream':
+        audio_mime = _EXT_MIME.get(ext, 'audio/webm')
+    print(f'[GROQ] audio file: {audio_file.name}, raw_mime: {raw_mime}, resolved: {audio_mime}')
+
     try:
         groq_client = OpenAI(
             api_key=settings.GROQ_API_KEY,
@@ -38,7 +135,7 @@ def process(request):
         )
         transcript_response = groq_client.audio.transcriptions.create(
             model='whisper-large-v3',
-            file=(audio_file.name, audio_file.read(), 'audio/webm'),
+            file=(audio_file.name, audio_file.read(), audio_mime),
         )
         transcript = transcript_response.text.strip()
         print(f'[GROQ] transcript length: {len(transcript)}, preview: {repr(transcript[:200])}')
@@ -87,21 +184,98 @@ def process(request):
     for cf in context_files:
         cf_bytes = cf.read()
         mime_type = (cf.content_type or '').split(';')[0].strip() or 'application/octet-stream'
+        name_lower = cf.name.lower()
         print(f'[CONTEXT FILE] name={cf.name}, mime={mime_type}, size={len(cf_bytes)}')
         try:
-            if mime_type.startswith('image/'):
+            # ── Images: pass as PIL directly ──────────────────────────────────
+            if mime_type.startswith('image/') or name_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.heif')):
                 pil_img = Image.open(io.BytesIO(cf_bytes))
                 parts.append(pil_img)
-            elif mime_type in ('application/pdf',):
+
+            # ── PDF: pass as inline bytes (Gemini natively supports PDFs) ─────
+            elif mime_type == 'application/pdf' or name_lower.endswith('.pdf'):
                 parts.append(types.Part.from_bytes(data=cf_bytes, mime_type='application/pdf'))
-            elif mime_type.startswith('text/') or mime_type in ('application/json',):
+
+            # ── Plain text / CSV / JSON / Markdown / code ─────────────────────
+            elif (
+                mime_type.startswith('text/')
+                or mime_type in ('application/json', 'application/xml')
+                or name_lower.endswith(('.txt', '.md', '.csv', '.json', '.xml', '.yaml', '.yml', '.py', '.js', '.ts', '.html', '.htm'))
+            ):
                 text_content = cf_bytes.decode('utf-8', errors='replace')
                 parts.append(f'Context document "{cf.name}":\n\n{text_content}')
+
+            # ── PowerPoint (PPTX / PPT) ───────────────────────────────────────
+            elif (
+                mime_type in (
+                    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                    'application/vnd.ms-powerpoint',
+                )
+                or name_lower.endswith(('.pptx', '.ppt'))
+            ):
+                from pptx import Presentation
+                prs = Presentation(io.BytesIO(cf_bytes))
+                slides_text = []
+                for i, slide in enumerate(prs.slides, 1):
+                    slide_parts = []
+                    for shape in slide.shapes:
+                        if hasattr(shape, 'text') and shape.text.strip():
+                            slide_parts.append(shape.text.strip())
+                    if slide_parts:
+                        slides_text.append(f'[Slide {i}]\n' + '\n'.join(slide_parts))
+                extracted = '\n\n'.join(slides_text) if slides_text else '(no readable text found in slides)'
+                parts.append(f'Context slides "{cf.name}" ({len(prs.slides)} slides):\n\n{extracted}')
+                print(f'[CONTEXT FILE] Extracted {len(prs.slides)} slides, {len(extracted)} chars from {cf.name}')
+
+            # ── Word (DOCX / DOC) ─────────────────────────────────────────────
+            elif (
+                mime_type in (
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'application/msword',
+                )
+                or name_lower.endswith(('.docx', '.doc'))
+            ):
+                from docx import Document
+                doc = Document(io.BytesIO(cf_bytes))
+                paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+                extracted = '\n\n'.join(paragraphs) if paragraphs else '(no readable text found in document)'
+                parts.append(f'Context document "{cf.name}":\n\n{extracted}')
+                print(f'[CONTEXT FILE] Extracted {len(paragraphs)} paragraphs from {cf.name}')
+
+            # ── Excel (XLSX / XLS) ────────────────────────────────────────────
+            elif (
+                mime_type in (
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'application/vnd.ms-excel',
+                )
+                or name_lower.endswith(('.xlsx', '.xls'))
+            ):
+                import openpyxl
+                wb = openpyxl.load_workbook(io.BytesIO(cf_bytes), read_only=True, data_only=True)
+                sheets_text = []
+                for sheet_name in wb.sheetnames:
+                    ws = wb[sheet_name]
+                    rows = []
+                    for row in ws.iter_rows(values_only=True):
+                        cells = [str(c) for c in row if c is not None]
+                        if cells:
+                            rows.append('\t'.join(cells))
+                    if rows:
+                        sheets_text.append(f'[Sheet: {sheet_name}]\n' + '\n'.join(rows))
+                extracted = '\n\n'.join(sheets_text) if sheets_text else '(no readable data found)'
+                parts.append(f'Context spreadsheet "{cf.name}":\n\n{extracted}')
+
+            # ── Fallback: try UTF-8 decode, then skip ─────────────────────────
             else:
-                # Try passing as inline bytes — Gemini may handle DOCX, PPTX, etc.
-                parts.append(types.Part.from_bytes(data=cf_bytes, mime_type=mime_type))
+                try:
+                    text_content = cf_bytes.decode('utf-8', errors='strict')
+                    parts.append(f'Context document "{cf.name}":\n\n{text_content}')
+                    print(f'[CONTEXT FILE] Decoded {cf.name} as UTF-8 fallback')
+                except UnicodeDecodeError:
+                    print(f'[CONTEXT FILE] Skipping unsupported binary file: {cf.name} ({mime_type})')
+
         except Exception as e:
-            print(f'[CONTEXT FILE ERROR] Skipping {cf.name}: {e}')
+            print(f'[CONTEXT FILE ERROR] Failed to process {cf.name}: {e}')
 
     if context_files:
         parts.append('The documents above are context materials provided by the student (lecture slides, notes, PDFs). Use them as primary reference material alongside the transcript.')
@@ -150,3 +324,64 @@ def process(request):
     # Include transcript so the frontend can display it
     result['transcript'] = transcript
     return Response(result)
+
+
+# ── Courses ──────────────────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def courses_list(request):
+    if request.method == 'GET':
+        courses = Course.objects.filter(user=request.user)
+        return Response(CourseListSerializer(courses, many=True).data)
+
+    serializer = CourseListSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    serializer.save(user=request.user)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'PUT', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def course_detail(request, pk):
+    course = get_object_or_404(Course, pk=pk, user=request.user)
+
+    if request.method == 'GET':
+        return Response(CourseDetailSerializer(course).data)
+
+    if request.method == 'PUT':
+        serializer = CourseListSerializer(course, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    course.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+# ── Lectures ──────────────────────────────────────────────────────────────────
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def lectures_create(request):
+    # Ensure the course belongs to the requesting user
+    course_id = request.data.get('course')
+    get_object_or_404(Course, pk=course_id, user=request.user)
+
+    serializer = LectureDetailSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    lecture = serializer.save()
+    lecture.course.save()  # bump updated_at so course sorts to top
+    return Response(LectureDetailSerializer(lecture).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET', 'DELETE'])
+@permission_classes([IsAuthenticated])
+def lecture_detail(request, pk):
+    lecture = get_object_or_404(Lecture, pk=pk, course__user=request.user)
+
+    if request.method == 'GET':
+        return Response(LectureDetailSerializer(lecture).data)
+
+    lecture.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)

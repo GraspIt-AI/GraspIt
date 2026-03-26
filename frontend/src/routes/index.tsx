@@ -1,9 +1,11 @@
 import { useState, useRef } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { useNavigate, Link } from '@tanstack/react-router'
 import AudioRecorder from '../components/AudioRecorder'
 import PhotoCapture from '../components/PhotoCapture'
 import ContextFiles from '../components/ContextFiles'
+import UserMenu from '../components/UserMenu'
 import { setResults } from '../store'
+import { getAccessToken } from '../authStore'
 
 type LoadingStep = 'idle' | 'uploading' | 'transcribing' | 'generating'
 
@@ -17,6 +19,7 @@ const STEPS: Exclude<LoadingStep, 'idle'>[] = ['uploading', 'transcribing', 'gen
 
 export default function RecordPage() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
+  const [audioFilename, setAudioFilename] = useState<string>('recording.webm')
   const [photos, setPhotos] = useState<File[]>([])
   const [contextFiles, setContextFiles] = useState<File[]>([])
   const [loadingStep, setLoadingStep] = useState<LoadingStep>('idle')
@@ -86,17 +89,19 @@ export default function RecordPage() {
     timersRef.current.push(setTimeout(() => setLoadingStep('generating'), 12000))
 
     const form = new FormData()
-    form.append('audio', audioBlob, 'recording.webm')
+    form.append('audio', audioBlob, audioFilename)
     photos.forEach((f) => form.append('images', f))
     contextFiles.forEach((f) => form.append('files', f))
 
     abortRef.current = new AbortController()
 
     try {
+      const token = getAccessToken()
       const res = await fetch('/api/process/', {
         method: 'POST',
         body: form,
         signal: abortRef.current.signal,
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Unknown error')
@@ -115,7 +120,13 @@ export default function RecordPage() {
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex flex-col items-center justify-center px-4 py-12">
       <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl p-6 sm:p-8 flex flex-col gap-8">
         {/* Header */}
-        <div className="text-center">
+        <div className="flex items-center justify-between">
+          <Link to="/courses" className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
+            ← My Courses
+          </Link>
+          <UserMenu />
+        </div>
+        <div>
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">BrainJam</h1>
           <p className="text-gray-500 mt-1 text-sm sm:text-base">Record your lecture. We'll handle the notes.</p>
         </div>
@@ -124,8 +135,15 @@ export default function RecordPage() {
         <section className="flex flex-col items-center gap-4">
           <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Step 1 — Record</h2>
           <AudioRecorder
-            onRecordingComplete={(blob) => { setAudioBlob(blob); setError(null) }}
-            onReset={() => setError(null)}
+            onRecordingComplete={(blob, filename) => {
+              setAudioBlob(blob)
+              setAudioFilename(filename)
+              setError(null)
+            }}
+            onReset={() => {
+              setAudioBlob(null)
+              setError(null)
+            }}
           />
         </section>
 
@@ -152,8 +170,11 @@ export default function RecordPage() {
           <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Step 4 — Generate</h2>
 
           {error && (
-            <div className="w-full bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm">
-              {error}
+            <div className="w-full bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 text-sm flex flex-col gap-1">
+              <span className="font-medium">{error}</span>
+              {audioBlob && (
+                <span className="text-red-500 text-xs">Your recording is preserved — just try again.</span>
+              )}
             </div>
           )}
 
