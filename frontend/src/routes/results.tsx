@@ -32,13 +32,15 @@ export default function ResultsPage() {
     )
   }
 
-  const { flashcards, notes, transcript } = state
+  const { flashcards, notes, transcript, title, summary } = state
 
   return (
     <ResultsView
       flashcards={flashcards}
       notes={notes}
       transcript={transcript}
+      title={title}
+      summary={summary}
       tab={tab}
       setTab={setTab}
       cardIndex={cardIndex}
@@ -55,6 +57,8 @@ interface ResultsViewProps {
   flashcards: { front: string; back: string }[]
   notes: string
   transcript: string
+  title?: string
+  summary?: string
   tab: 'flashcards' | 'notes' | 'transcript'
   setTab: (t: 'flashcards' | 'notes' | 'transcript') => void
   cardIndex: number
@@ -66,7 +70,7 @@ interface ResultsViewProps {
 }
 
 function ResultsView({
-  flashcards, notes, transcript,
+  flashcards, notes, transcript, title, summary,
   tab, setTab,
   cardIndex, setCardIndex,
   cardFlipped, setCardFlipped,
@@ -118,11 +122,18 @@ function ResultsView({
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex flex-col items-center px-4 py-12">
       <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl p-8 flex flex-col gap-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Your Lecture</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 leading-tight">
+              {title || 'Your Lecture'}
+            </h1>
+            {summary && (
+              <p className="text-sm text-gray-500 mt-1 leading-snug">{summary}</p>
+            )}
+          </div>
           <Link
             to="/"
-            className="text-sm text-indigo-600 hover:text-indigo-800 font-medium"
+            className="text-sm text-indigo-600 hover:text-indigo-800 font-medium shrink-0 mt-1"
           >
             ← New recording
           </Link>
