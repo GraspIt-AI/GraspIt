@@ -2,7 +2,7 @@
 
 ## What is BrainJam?
 
-BrainJam is a lecture-to-study-materials web app built for a hackathon. Students record a lecture audio (or upload an existing file), optionally snap/upload photos of whiteboards/slides, and optionally attach context files (PDFs, slides, notes). The app automatically generates flashcards, structured notes, a title, and a summary. Users can create courses to organise saved lectures.
+BrainJam is a lecture-to-study-materials web app built for a hackathon. Students record a lecture audio (or upload an existing file), optionally snap/upload photos of whiteboards/slides, and optionally attach context files (PDFs, slides, notes). The app automatically generates flashcards, structured notes, a title, a summary, and topic tags. Users can create courses to organise saved lectures, study by topic, and take AI-generated exams with persistent score tracking.
 
 **Hackathon deadline:** Thursday March 27, 2026 — midday presentation.
 **Repo:** https://github.com/Enrikkk/BrainJam (private)
@@ -38,16 +38,18 @@ BrainJam/
 │   │   ├── store.ts           ← Module-level store (setResults/getResults) for ephemeral results
 │   │   ├── authStore.ts       ← localStorage-backed auth store (tokens + user info)
 │   │   ├── api.ts             ← Typed fetch wrappers; auto-attaches Bearer token
+│   │   ├── usePrintNotes.tsx  ← Portal-based print hook for PDF export of notes
 │   │   ├── routes/
 │   │   │   ├── index.tsx      ← RecordPage (record/upload audio, photos, context files, generate)
 │   │   │   ├── results.tsx    ← ResultsPage (flashcards/notes/transcript + save-to-course panel)
 │   │   │   ├── courses.tsx    ← CoursesPage (grid of course cards, create course modal)
-│   │   │   ├── course.tsx     ← CourseDetailPage (lecture list, stats)
-│   │   │   ├── lecture.tsx    ← LecturePage (saved lecture view, fetched from DB)
+│   │   │   ├── course.tsx     ← CourseDetailPage (lecture list, topic pills with score badges, avg score, Needs Review)
+│   │   │   ├── lecture.tsx    ← LecturePage (flashcards, notes, editable transcript, tags, PDF export, prev/next nav)
+│   │   │   ├── topic.tsx      ← TopicPage (combined notes + flashcards across lectures; exam tab with MCQ/numeric/short_answer)
 │   │   │   ├── login.tsx      ← LoginPage
 │   │   │   └── register.tsx   ← RegisterPage
 │   │   └── components/
-│   │       ├── AudioRecorder.tsx   ← Record mode + Upload file mode toggle
+│   │       ├── AudioRecorder.tsx   ← Record mode + Upload audio file mode toggle
 │   │       ├── PhotoCapture.tsx    ← Take photo (camera) + Upload photo (gallery) buttons
 │   │       ├── ContextFiles.tsx    ← Arbitrary file uploads (PDF, DOCX, PPTX, TXT, images…)
 │   │       ├── UserMenu.tsx        ← Avatar dropdown with username, email, sign out
@@ -65,8 +67,8 @@ BrainJam/
         │   └── models.py
         └── api/
             ├── urls.py        ← all API endpoints
-            ├── views.py       ← process pipeline + auth + courses/lectures CRUD
-            ├── models.py      ← Course, Lecture, Flashcard
+            ├── views.py       ← process pipeline + auth + courses/lectures CRUD + exam generation
+            ├── models.py      ← Course, Lecture, Flashcard, TopicExam
             └── serializers.py
 ```
 
@@ -130,22 +132,27 @@ GET  /api/auth/me/                                       → { id, email, userna
 
 ## Database (SQLite)
 
-Three models in `api/models.py`:
+Four models in `api/models.py`:
 
 ```
-Course   — user (FK→User), name, description, color (#hex), created_at, updated_at
-Lecture  — course (FK→Course), title, summary, transcript, notes, created_at
-Flashcard — lecture (FK→Lecture), front, back, order
+Course     — user (FK→User), name, description, color (#hex), created_at, updated_at
+Lecture    — course (FK→Course), title, summary, transcript, notes, tags (JSONField), created_at
+Flashcard  — lecture (FK→Lecture), front, back, order
+TopicExam  — course (FK→Course), tag, questions (JSONField), lecture_snapshot (JSONField),
+             last_score, last_total, attempts; unique_together (course, tag)
 ```
 
 All course/lecture queries are scoped to `request.user` — users never see each other's data.
 
 **CRUD endpoints:**
 ```
-GET/POST   /api/courses/          list / create course
-GET/PUT/DELETE /api/courses/:id/  course detail (includes lecture list) / update / delete
-POST       /api/lectures/         save lecture + flashcards
-GET/DELETE /api/lectures/:id/     lecture detail / delete
+GET/POST          /api/courses/                   list / create course
+GET/PUT/DELETE    /api/courses/:id/               course detail / update / delete
+GET/POST/PATCH    /api/courses/:id/exam/          get/generate/submit-score for topic exam
+GET               /api/courses/:id/topic/         topic data (notes + flashcards across lectures)
+POST              /api/lectures/                  save lecture + flashcards
+GET/PATCH/DELETE  /api/lectures/:id/              lecture detail / update (transcript, tags) / delete
+POST              /api/lectures/:id/regenerate/   regenerate notes+flashcards from transcript
 ```
 
 ---
@@ -168,6 +175,7 @@ Response:
   {
     "title": "Short Lecture Title",
     "summary": "1-2 sentence overview.",
+    "tags": ["tag1", "tag2"],
     "flashcards": [{"front": "...", "back": "..."}],
     "notes": "## Key Takeaways\n...",
     "transcript": "raw transcript text..."
@@ -186,7 +194,7 @@ Response:
 | Unknown binary | UTF-8 decode attempted; skipped if binary |
 
 **Audio MIME resolution (views.py):**
-MIME type is detected from `Content-Type` header first, then file extension. Handles `audio/x-m4a → audio/m4a`, `audio/x-wav → audio/wav`, etc. Previously hardcoded `audio/webm` caused transcription failures for uploaded MP3/WAV files.
+MIME type is detected from `Content-Type` header first, then file extension. Handles `audio/x-m4a → audio/m4a`, `audio/x-wav → audio/wav`, etc.
 
 ---
 
@@ -200,7 +208,42 @@ MIME type is detected from `Content-Type` header first, then file extension. Han
 | `/results` | ResultsPage | Protected; ephemeral (module-level store) |
 | `/courses` | CoursesPage | Protected |
 | `/courses/:courseId` | CourseDetailPage | Protected; props via `route.useParams()` |
+| `/courses/:courseId/topics/:tag` | TopicPage | Protected; shows combined notes, flashcards, exam for a tag |
 | `/lectures/:lectureId` | LecturePage | Protected; fetches from DB |
+
+---
+
+## Key Features
+
+### Tags / Topics
+Gemini generates up to 6 topic tags per lecture. Tags are stored as a JSONField on Lecture. Each tag creates a topic page aggregating notes and flashcards from all lectures in that course sharing the tag. Tags can be edited per-lecture in the LecturePage (with suggestions from existing course tags).
+
+### Topic Exams
+- Generated on demand via POST `/api/courses/:id/exam/` with a `tag` body param
+- Exams are cached in `TopicExam` (unique per course+tag); re-generation overwrites
+- `stale` flag is returned when the set of lectures tagged with that topic has changed since generation
+- Three question types (discriminated union in TypeScript):
+  - `mcq`: 4 options, 0-based correct index, explanation
+  - `numeric`: calculation question, worked answer, explanation
+  - `short_answer`: open-ended question, model answer
+- `normalizeQuestions()` in topic.tsx backfills `type: 'mcq'` on cached exams generated before the type field existed
+
+### Progress Tracking
+- After completing an exam, score is saved via PATCH `/api/courses/:id/exam/` with `{ tag, score, total }`
+- `TopicExam` stores `last_score`, `last_total`, `attempts` (atomically incremented via `F('attempts') + 1`)
+- Course detail GET includes `exam_scores: [{ tag, last_score, last_total, attempts }]`
+- Course page surfaces: score badge on each topic pill (green ≥70%, amber 50–69%, red <50%), avg score stat card, "Needs Review" section listing topics <70% sorted worst first
+
+### Transcript Editing & Regeneration
+- Transcript tab on LecturePage is editable — PATCH `/api/lectures/:id/` with `{ transcript }`
+- After saving, an amber banner prompts to regenerate notes/flashcards from the updated transcript
+- Regenerate calls POST `/api/lectures/:id/regenerate/` — replaces title, summary, notes, tags, and all flashcards
+- Regenerate prompt disappears once regeneration succeeds (not before)
+
+### PDF Export
+- Notes tab has an "Export PDF" button using `usePrintNotes` hook (`frontend/src/usePrintNotes.tsx`)
+- Renders notes into a hidden print-only portal, then calls `window.print()` — browser native print-to-PDF
+- Print styles hide everything except the notes content
 
 ---
 
@@ -209,7 +252,7 @@ MIME type is detected from `Content-Type` header first, then file extension. Han
 ### AudioRecorder.tsx
 Two modes toggled by a tab bar:
 - **Record** — microphone recording with live timer; mic permission error shown inline
-- **Upload file** — file picker accepting MP3, WAV, M4A, OGG, FLAC, AAC, WebM, MP4
+- **Upload audio file** — file picker accepting MP3, WAV, M4A, OGG, FLAC, AAC, WebM, MP4
 - On API error, the parent error banner shows *"Your recording is preserved — just try again."*
 - `onReset` prop clears the parent's `audioBlob` when user explicitly re-records/changes file
 - Callback: `onRecordingComplete(blob, filename)` — filename used so Groq gets the correct extension
@@ -239,19 +282,30 @@ After generating, a panel appears at the bottom to save the lecture:
 ### RecordPage (`index.tsx`)
 - Header row: `← My Courses` link (left) + `UserMenu` (right)
 - Title `BrainJam` + subtitle sit below the header row in a separate block
-- No dead-end — user can always get back to `/courses`
 
 ### ResultsPage (`results.tsx`)
 - Header: `← Record new` link (goes to `/`) + `My Courses` link (goes to `/courses`)
 - After saving: green confirmation row shows `← Back to course` (to `/courses/:id`) and `View saved →` (to `/lectures/:id`)
 
 ### CourseDetailPage (`course.tsx`)
-- Delete course: inline confirmation row (`Delete course? / Delete / Cancel`) instead of `confirm()` dialog
-- Delete lecture (in `LectureCard`): same inline pattern per-card via local `confirmDelete` state
+- Stats row: Lectures count, Flashcard count, Topics count, Avg score (when exams attempted)
+- Topics section: pills with score badges; "Needs Review" section below when any topic <70%
+- Delete course: inline confirmation row instead of `confirm()` dialog
+- Delete lecture (in `LectureCard`): same inline pattern per-card
 
 ### LecturePage (`lecture.tsx`)
-- Delete: inline confirmation row (`Delete? / Delete / Cancel`) — no `confirm()` dialog
-- **Prev / Next lecture navigation**: fetches sibling lectures via `useQuery(['course', lecture.course])`, computes `prevId` / `nextId` from the ordered `lectures` array, renders `← Prev lecture` / `Next lecture →` links at the bottom of the card. Hidden when at first/last lecture.
+- Three tabs: Flashcards, Notes, Transcript
+- Notes tab: "Export PDF" + "Copy notes" buttons
+- Transcript tab: "Edit" button → textarea; "Save" saves to DB; amber banner prompts regeneration
+- Tags: inline edit with suggestions from sibling lectures in the same course
+- Delete: inline confirmation row — no `confirm()` dialog
+- **Prev / Next lecture navigation**: bottom of card, hidden at first/last lecture
+
+### TopicPage (`topic.tsx`)
+- Two tabs: Study (combined notes + flashcards from all tagged lectures) and Exam
+- Exam tab: generates or loads cached exam; shows stale warning when lecture set changed since last generation
+- Exam flow: questions shown one at a time; MCQ selectable options; numeric/short_answer show model answer after submission; summary screen at end with score and per-question review
+- Score submitted to backend on exam completion; course page score badges update
 
 ### CoursesPage (`courses.tsx`)
 - Empty state copy: *"Welcome to BrainJam! Create your first course to start organising your lectures."*
@@ -277,7 +331,7 @@ No `window.confirm()` dialogs are used anywhere in the app.
 
 ## Environment Variables
 
-Located at `/home/enrikkk/Desktop/Computer Science/BrainJam/.env`:
+Located at `BrainJam/.env`:
 ```
 GROQ_API_KEY=gsk_...
 GEMINI_API_KEY=...
@@ -302,6 +356,12 @@ No file-based routing. Parameterised routes are defined in `routeTree.ts` with a
 ### JWT Multi-Device
 Access tokens are stateless — no server-side session. Each device logs in independently and gets its own token pair. Logout blacklists only the refresh token used on that device; other devices remain logged in.
 
+### TopicExam Caching
+Exams are generated once per (course, tag) pair and cached in the DB. A `lecture_snapshot` (sorted list of lecture PKs at generation time) is stored so the frontend can detect staleness when lectures are added/removed. The stale flag prompts the user to regenerate; they can also use the cached exam as-is.
+
+### ExamQuestion Discriminated Union
+`ExamQuestion` in `api.ts` is a TypeScript discriminated union on `type`. `normalizeQuestions()` in `topic.tsx` backfills `type: 'mcq'` on questions from exams generated before the type field was added to the prompt, ensuring backward compatibility.
+
 ---
 
 ## Known Issues / Past Fixes
@@ -315,14 +375,17 @@ Access tokens are stateless — no server-side session. Each device logs in inde
 - `load_dotenv` must be called after `BASE_DIR` is defined in settings.py
 - `npm run dev` may fail with `ENOSPC: System limit for number of file watchers reached` → use `CHOKIDAR_USEPOLLING=1 npm run dev`
 - `Outlet` from TanStack Router v1 is a `React.memo` object (`typeof === 'object'`), not a function — still a valid React component, works as `component: Outlet` in `createRoute`
-- `window.confirm()` on mobile is unstyled and blocks the UI — replaced everywhere with inline confirmation pattern (see Navigation & UX Design section)
+- `window.confirm()` on mobile is unstyled and blocks the UI — replaced everywhere with inline confirmation pattern
+- `course.lectures.filter(tags__contains=[tag])` JSONField lookup fails on older SQLite — fixed: Python-level filter `[l for l in course.lectures.all() if tag in (l.tags or [])]`
+- Cached exams with no `type` field (generated before question types were added) rendered blank — fixed: `normalizeQuestions()` defaults missing `type` to `'mcq'`
+- Regenerate alert appeared immediately after transcript save (before user clicked Regenerate) — fixed: conditional rendering gates the amber banner on `updateTranscript.isSuccess && !editingTranscript && !regenerate.isSuccess`
+- `usePrintNotes` opened a new blank tab — fixed: portal renders into `document.body`, `window.print()` called directly; no new tab needed
 
 ---
 
 ## Out of Scope
 
 - React Native mobile app (planned post-hackathon)
-- Export to Anki/PDF
 - Real-time transcription
 - Audio chunking for files >25 MB
 - Password reset / email verification
