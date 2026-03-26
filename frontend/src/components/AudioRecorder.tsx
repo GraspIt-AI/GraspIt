@@ -108,19 +108,17 @@ export default function AudioRecorder({ onRecordingComplete, onReset }: Props) {
       <div className="flex rounded-xl bg-gray-100 p-1 gap-1 w-full max-w-xs">
         <button
           onClick={() => switchMode('record')}
-          className={`flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-            mode === 'record' ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'
-          }`}
+          className={`flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors ${mode === 'record' ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'
+            }`}
         >
           🎙️ Record
         </button>
         <button
           onClick={() => switchMode('upload')}
-          className={`flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
-            mode === 'upload' ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'
-          }`}
+          className={`flex-1 py-1.5 rounded-lg text-sm font-semibold transition-colors ${mode === 'upload' ? 'bg-white shadow text-indigo-700' : 'text-gray-500 hover:text-gray-700'
+            }`}
         >
-          📁 Upload file
+          📁 Upload audio
         </button>
       </div>
 

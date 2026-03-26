@@ -375,12 +375,18 @@ def lectures_create(request):
     return Response(LectureDetailSerializer(lecture).data, status=status.HTTP_201_CREATED)
 
 
-@api_view(['GET', 'DELETE'])
+@api_view(['GET', 'PATCH', 'DELETE'])
 @permission_classes([IsAuthenticated])
 def lecture_detail(request, pk):
     lecture = get_object_or_404(Lecture, pk=pk, course__user=request.user)
 
     if request.method == 'GET':
+        return Response(LectureDetailSerializer(lecture).data)
+
+    if request.method == 'PATCH':
+        if 'transcript' in request.data:
+            lecture.transcript = request.data['transcript']
+            lecture.save(update_fields=['transcript'])
         return Response(LectureDetailSerializer(lecture).data)
 
     lecture.delete()

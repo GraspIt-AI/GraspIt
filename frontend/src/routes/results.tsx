@@ -148,6 +148,7 @@ export default function ResultsPage() {
   const [cardFlipped, setCardFlipped] = useState(false)
   const [copied, setCopied] = useState(false)
   const [saved, setSaved] = useState<{ courseId: number; lectureId: number } | null>(null)
+  const [editedTranscript, setEditedTranscript] = useState<string | null>(null)
 
   if (!state?.flashcards || state.flashcards.length === 0) {
     return (
@@ -167,7 +168,8 @@ export default function ResultsPage() {
     )
   }
 
-  const { flashcards, notes, transcript, title = 'Your Lecture', summary = '' } = state
+  const { flashcards, notes, transcript: rawTranscript, title = 'Your Lecture', summary = '' } = state
+  const transcript = editedTranscript ?? rawTranscript
 
   // Keyboard navigation
   const handleKey = useCallback((e: KeyboardEvent) => {
@@ -310,10 +312,14 @@ export default function ResultsPage() {
 
         {/* Transcript view */}
         {tab === 'transcript' && transcript && (
-          <div className="bg-gray-50 rounded-2xl p-5 max-h-96 overflow-y-auto">
-            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap font-mono">
-              {transcript}
-            </p>
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-gray-400 text-right">Edits are saved when you save the lecture</p>
+            <textarea
+              className="w-full bg-gray-50 rounded-2xl p-5 max-h-96 text-sm text-gray-700 leading-relaxed font-mono resize-none outline-none focus:ring-2 focus:ring-indigo-200 border border-transparent focus:border-indigo-200 overflow-y-auto"
+              rows={12}
+              value={transcript}
+              onChange={(e) => setEditedTranscript(e.target.value)}
+            />
           </div>
         )}
 
