@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, type LectureListItem } from '../api'
+import CourseChat from '../components/CourseChat'
 
 interface Props {
   courseId: number
@@ -76,6 +77,7 @@ export default function CourseDetailPage({ courseId }: Props) {
   const navigate = useNavigate()
   const qc = useQueryClient()
   const [confirmDeleteCourse, setConfirmDeleteCourse] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
 
   const { data: course, isLoading } = useQuery({
     queryKey: ['course', courseId],
@@ -136,6 +138,7 @@ export default function CourseDetailPage({ courseId }: Props) {
     .sort((a, b) => (scorePct(a) ?? 0) - (scorePct(b) ?? 0))
 
   return (
+    <>
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 px-4 py-12">
       <div className="w-full max-w-2xl mx-auto flex flex-col gap-8">
         {/* Header */}
@@ -159,6 +162,15 @@ export default function CourseDetailPage({ courseId }: Props) {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              <button
+                onClick={() => setChatOpen(true)}
+                className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"
+                title="Ask your lectures (AI)"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+                </svg>
+              </button>
               <button
                 onClick={() => window.dispatchEvent(new CustomEvent('brainjam:search', { detail: { courseId: course.id, courseName: course.name } }))}
                 className="p-2 text-gray-400 hover:text-indigo-600 transition-colors"
@@ -289,5 +301,9 @@ export default function CourseDetailPage({ courseId }: Props) {
         )}
       </div>
     </div>
+    {chatOpen && (
+      <CourseChat courseId={courseId} courseName={course.name} onClose={() => setChatOpen(false)} />
+    )}
+    </>
   )
 }

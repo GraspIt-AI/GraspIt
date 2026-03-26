@@ -4,7 +4,7 @@ import os
 import tempfile
 import concurrent.futures
 from django.conf import settings
-from django.http import HttpResponse
+from django.http import HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
 from rest_framework.decorators import api_view, parser_classes, permission_classes
@@ -635,6 +635,69 @@ def course_anki(request, pk):
     apkg = _make_anki_pkg(deck_name, cards)
     resp = HttpResponse(apkg, content_type='application/octet-stream')
     resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
+_CHAT_SYSTEM_PROMPT = (
+    'You are a study assistant for this course. '
+    'Answer questions based only on the course content provided. '
+    'Be concise but thorough. Reference specific lecture titles when relevant. '
+    "If a topic isn't covered in the lectures, say so clearly."
+)
+
+
+def _build_course_context(course):
+    parts = []
+    for lec in course.lectures.all():
+        chunk = f'=== Lecture: {lec.title} ===\n'
+        if lec.summary:
+            chunk += f'Summary: {lec.summary}\n'
+        if lec.transcript:
+            chunk += f'\nTranscript:\n{lec.transcript}\n'
+        if lec.notes:
+            chunk += f'\nNotes:\n{lec.notes}\n'
+        parts.append(chunk)
+    return '\n\n'.join(parts)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def course_chat(request, pk):
+    course = get_object_or_404(Course, pk=pk, user=request.user)
+    messages = request.data.get('messages', [])
+    if not messages:
+        return Response({'error': 'messages required.'}, status=400)
+
+    context = _build_course_context(course)
+    first_content = f'Course: {course.name}\n\nMaterials:\n\n{context}\n\n---\n\n{messages[0]["content"]}'
+    contents = [
+        types.Content(role='user', parts=[types.Part.from_text(text=first_content)])
+    ]
+    for msg in messages[1:]:
+        role = 'user' if msg['role'] == 'user' else 'model'
+        contents.append(types.Content(role=role, parts=[types.Part.from_text(text=msg['content'])]))
+
+    def event_stream():
+        try:
+            gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+            for chunk in gemini_client.models.generate_content_stream(
+                model='gemini-2.5-flash',
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=_CHAT_SYSTEM_PROMPT,
+                    max_output_tokens=2048,
+                    temperature=0.7,
+                ),
+            ):
+                if chunk.text:
+                    yield f'data: {json.dumps({"text": chunk.text})}\n\n'
+        except Exception as e:
+            yield f'data: {json.dumps({"error": str(e)})}\n\n'
+        yield 'data: [DONE]\n\n'
+
+    resp = StreamingHttpResponse(event_stream(), content_type='text/event-stream')
+    resp['Cache-Control'] = 'no-cache'
+    resp['X-Accel-Buffering'] = 'no'
     return resp
 
 

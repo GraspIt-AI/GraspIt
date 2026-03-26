@@ -63,6 +63,42 @@ export interface TopicData {
   }[]
 }
 
+export async function streamCourseChat(
+  courseId: number,
+  messages: { role: 'user' | 'assistant'; content: string }[],
+  onChunk: (text: string) => void,
+  onDone: () => void,
+  onError: (err: string) => void,
+): Promise<void> {
+  const { getAccessToken } = await import('./authStore')
+  const token = getAccessToken()
+  const res = await fetch(`/api/courses/${courseId}/chat/`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ messages }),
+  })
+  if (!res.ok || !res.body) { onError('Request failed'); return }
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    for (const line of decoder.decode(value).split('\n')) {
+      if (!line.startsWith('data: ')) continue
+      const payload = line.slice(6)
+      if (payload === '[DONE]') { onDone(); return }
+      try {
+        const parsed = JSON.parse(payload)
+        if (parsed.error) { onError(parsed.error); return }
+        if (parsed.text) onChunk(parsed.text)
+      } catch {}
+    }
+  }
+}
+
 export async function downloadFile(url: string, filename: string): Promise<void> {
   const { getAccessToken } = await import('./authStore')
   const token = getAccessToken()
