@@ -65,6 +65,12 @@ export default function LecturePage({ lectureId }: Props) {
 
   const [tab, setTab] = useState<'flashcards' | 'notes' | 'transcript'>('flashcards')
   const [cardIndex, setCardIndex] = useState(0)
+
+  // Reset card index when flashcards change (e.g. after regeneration) to avoid out-of-bounds
+  useEffect(() => {
+    setCardIndex(0)
+    setCardFlipped(false)
+  }, [lecture?.flashcards.length])
   const [cardFlipped, setCardFlipped] = useState(false)
   const [copied, setCopied] = useState(false)
   const [ankiExporting, setAnkiExporting] = useState(false)
@@ -303,25 +309,31 @@ export default function LecturePage({ lectureId }: Props) {
                     {ankiExporting ? 'Exporting…' : 'Export to Anki'}
                   </button>
                 </div>
-                <FlashCard
-                  front={lecture.flashcards[cardIndex].front}
-                  back={lecture.flashcards[cardIndex].back}
-                  index={cardIndex}
-                  total={lecture.flashcards.length}
-                  flipped={cardFlipped}
-                  onFlip={() => setCardFlipped(!cardFlipped)}
-                />
-                <div className="flex gap-3">
-                  <button onClick={() => goToCard(Math.max(0, cardIndex - 1))} disabled={cardIndex === 0}
-                    className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-30 transition-colors">
-                    ← Prev
-                  </button>
-                  <button onClick={() => goToCard(Math.min(lecture.flashcards.length - 1, cardIndex + 1))} disabled={cardIndex === lecture.flashcards.length - 1}
-                    className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-30 transition-colors">
-                    Next →
-                  </button>
-                </div>
-                <p className="text-xs text-gray-400 text-center">Arrow keys to navigate · Space to flip</p>
+                {lecture.flashcards.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-8">No flashcards generated.</p>
+                ) : (
+                  <>
+                    <FlashCard
+                      front={lecture.flashcards[Math.min(cardIndex, lecture.flashcards.length - 1)].front}
+                      back={lecture.flashcards[Math.min(cardIndex, lecture.flashcards.length - 1)].back}
+                      index={cardIndex}
+                      total={lecture.flashcards.length}
+                      flipped={cardFlipped}
+                      onFlip={() => setCardFlipped(!cardFlipped)}
+                    />
+                    <div className="flex gap-3">
+                      <button onClick={() => goToCard(Math.max(0, cardIndex - 1))} disabled={cardIndex === 0}
+                        className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-30 transition-colors">
+                        ← Prev
+                      </button>
+                      <button onClick={() => goToCard(Math.min(lecture.flashcards.length - 1, cardIndex + 1))} disabled={cardIndex === lecture.flashcards.length - 1}
+                        className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-700 font-medium hover:bg-gray-50 disabled:opacity-30 transition-colors">
+                        Next →
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400 text-center">Arrow keys to navigate · Space to flip</p>
+                  </>
+                )}
               </div>
             )}
 
