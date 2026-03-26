@@ -28,6 +28,14 @@ export default function LecturePage({ lectureId }: Props) {
     },
   })
 
+  const updateTranscript = useMutation({
+    mutationFn: (transcript: string) => api.lectures.update(lectureId, { transcript }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['lecture', lectureId] })
+      setEditingTranscript(false)
+    },
+  })
+
   const { data: course } = useQuery({
     queryKey: ['course', lecture?.course],
     queryFn: () => api.courses.get(lecture!.course),
@@ -43,6 +51,8 @@ export default function LecturePage({ lectureId }: Props) {
   const [cardFlipped, setCardFlipped] = useState(false)
   const [copied, setCopied] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [editingTranscript, setEditingTranscript] = useState(false)
+  const [transcriptDraft, setTranscriptDraft] = useState('')
 
   const handleKey = useCallback((e: KeyboardEvent) => {
     if (!lecture || tab !== 'flashcards') return
@@ -217,10 +227,51 @@ export default function LecturePage({ lectureId }: Props) {
 
         {/* Transcript view */}
         {tab === 'transcript' && lecture.transcript && (
-          <div className="bg-gray-50 rounded-2xl p-5 max-h-96 overflow-y-auto">
-            <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap font-mono">
-              {lecture.transcript}
-            </p>
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-end">
+              {editingTranscript ? (
+                <div className="flex items-center gap-2">
+                  {updateTranscript.error && (
+                    <span className="text-xs text-red-500">{(updateTranscript.error as Error).message}</span>
+                  )}
+                  <button
+                    onClick={() => setEditingTranscript(false)}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => updateTranscript.mutate(transcriptDraft)}
+                    disabled={updateTranscript.isPending}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors font-medium"
+                  >
+                    {updateTranscript.isPending ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => { setTranscriptDraft(lecture.transcript); setEditingTranscript(true) }}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-medium"
+                >
+                  Edit
+                </button>
+              )}
+            </div>
+            {editingTranscript ? (
+              <textarea
+                autoFocus
+                className="w-full bg-gray-50 rounded-2xl p-5 max-h-96 text-sm text-gray-700 leading-relaxed font-mono resize-none outline-none focus:ring-2 focus:ring-indigo-200 border border-indigo-200 overflow-y-auto"
+                rows={12}
+                value={transcriptDraft}
+                onChange={(e) => setTranscriptDraft(e.target.value)}
+              />
+            ) : (
+              <div className="bg-gray-50 rounded-2xl p-5 max-h-96 overflow-y-auto">
+                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap font-mono">
+                  {lecture.transcript}
+                </p>
+              </div>
+            )}
           </div>
         )}
 

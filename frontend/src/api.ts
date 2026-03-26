@@ -83,6 +83,8 @@ export const api = {
       flashcards: { front: string; back: string }[]
     }) => req<LectureDetail>('/api/lectures/', { method: 'POST', body: JSON.stringify(body) }),
     get: (id: number) => req<LectureDetail>(`/api/lectures/${id}/`),
+    update: (id: number, body: { transcript: string }) =>
+      req<LectureDetail>(`/api/lectures/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }),
     delete: (id: number) => req<void>(`/api/lectures/${id}/`, { method: 'DELETE' }),
   },
 }
