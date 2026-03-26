@@ -17,4 +17,5 @@ urlpatterns = [
     # Lectures
     path('lectures/', views.lectures_create, name='lectures-create'),
     path('lectures/<int:pk>/', views.lecture_detail, name='lecture-detail'),
+    path('lectures/<int:pk>/regenerate/', views.lecture_regenerate, name='lecture-regenerate'),
 ]

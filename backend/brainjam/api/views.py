@@ -12,7 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from openai import OpenAI
 from google import genai
 from google.genai import types
-from .models import Course, Lecture
+from .models import Course, Lecture, Flashcard
 from .serializers import (
     CourseListSerializer, CourseDetailSerializer,
     LectureDetailSerializer,
@@ -21,6 +21,58 @@ from PIL import Image
 import io
 
 User = get_user_model()
+
+_SYSTEM_PROMPT = (
+    'You are a study assistant. Given a lecture transcript and optional context materials '
+    '(photos, slides, PDFs, documents), '
+    'output ONLY valid JSON with exactly this shape — no markdown fences, no extra keys:\n'
+    '{"title": "short lecture title", "summary": "1-2 sentence overview", '
+    '"flashcards": [{"front": "question", "back": "answer"}], "notes": "markdown string"}\n\n'
+    'TITLE: A concise descriptive title for this lecture (5-10 words, e.g. "Introduction to Photosynthesis").\n'
+    'SUMMARY: 1-2 sentences summarising what the lecture covered.\n\n'
+    'FLASHCARD RULES:\n'
+    '- Generate 10-20 flashcards covering the key concepts.\n'
+    '- Prefer concept-understanding questions over simple trivia (ask "why" and "how", not just "what").\n'
+    '- Always create a dedicated flashcard for every equation, formula, or definition mentioned.\n'
+    '- Avoid duplicating overlapping topics — merge similar cards into one.\n'
+    '- If context documents (slides, PDFs) are provided, prioritise concepts from them.\n\n'
+    'NOTES RULES:\n'
+    '- Start with a "## Key Takeaways" section (3-5 bullet points summarising the most important ideas).\n'
+    '- Then use ## H2 section headers for each major topic.\n'
+    '- Use bullet points under each header. Bold (**like this**) all key terms and important concepts.\n'
+    '- The notes should be a complete, well-structured markdown document a student can study from.\n'
+)
+
+
+def _run_gemini(parts):
+    """Run Gemini generation on the given parts list. Returns parsed JSON dict. Raises on error."""
+    gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+    def _generate():
+        return gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=parts,
+            config=types.GenerateContentConfig(
+                system_instruction=_SYSTEM_PROMPT,
+                max_output_tokens=8192,
+                temperature=0.4,
+            ),
+        )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(_generate)
+        try:
+            response = future.result(timeout=60)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError('Generation timed out.')
+
+    raw = response.text.strip()
+    print(f'[GEMINI] raw response (first 300): {repr(raw[:300])}')
+    if raw.startswith('```'):
+        raw = raw.split('```')[1]
+        if raw.startswith('json'):
+            raw = raw[4:]
+    return json.loads(raw)
 
 
 def _user_tokens(user):
@@ -149,28 +201,7 @@ def process(request):
         return Response({'error': f'Transcription failed: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
 
     # 2. Build Gemini prompt parts
-    system_prompt = (
-        'You are a study assistant. Given a lecture transcript and optional context materials '
-        '(photos, slides, PDFs, documents), '
-        'output ONLY valid JSON with exactly this shape — no markdown fences, no extra keys:\n'
-        '{"title": "short lecture title", "summary": "1-2 sentence overview", '
-        '"flashcards": [{"front": "question", "back": "answer"}], "notes": "markdown string"}\n\n'
-        'TITLE: A concise descriptive title for this lecture (5-10 words, e.g. "Introduction to Photosynthesis").\n'
-        'SUMMARY: 1-2 sentences summarising what the lecture covered.\n\n'
-        'FLASHCARD RULES:\n'
-        '- Generate 10-20 flashcards covering the key concepts.\n'
-        '- Prefer concept-understanding questions over simple trivia (ask "why" and "how", not just "what").\n'
-        '- Always create a dedicated flashcard for every equation, formula, or definition mentioned.\n'
-        '- Avoid duplicating overlapping topics — merge similar cards into one.\n'
-        '- If context documents (slides, PDFs) are provided, prioritise concepts from them.\n\n'
-        'NOTES RULES:\n'
-        '- Start with a "## Key Takeaways" section (3-5 bullet points summarising the most important ideas).\n'
-        '- Then use ## H2 section headers for each major topic.\n'
-        '- Use bullet points under each header. Bold (**like this**) all key terms and important concepts.\n'
-        '- The notes should be a complete, well-structured markdown document a student can study from.\n'
-    )
-
-    parts = [f'Lecture transcript:\n\n{transcript}']
+    parts: list = [f'Lecture transcript:\n\n{transcript}']
 
     for img in image_files:
         img_bytes = img.read()
@@ -280,42 +311,14 @@ def process(request):
     if context_files:
         parts.append('The documents above are context materials provided by the student (lecture slides, notes, PDFs). Use them as primary reference material alongside the transcript.')
 
-    # 3. Generate flashcards + notes with Gemini — 60s timeout via ThreadPoolExecutor
+    # 3. Generate flashcards + notes with Gemini
     try:
-        gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
-
-        def _generate():
-            return gemini_client.models.generate_content(
-                model='gemini-2.5-flash',
-                contents=parts,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_prompt,
-                    max_output_tokens=8192,
-                    temperature=0.4,
-                ),
-            )
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_generate)
-            try:
-                response = future.result(timeout=60)
-            except concurrent.futures.TimeoutError:
-                return Response(
-                    {'error': 'Generation timed out. Please try again.'},
-                    status=status.HTTP_504_GATEWAY_TIMEOUT,
-                )
-
-        raw = response.text.strip()
-        print(f'[GEMINI] raw response (first 300): {repr(raw[:300])}')
-        # Strip markdown code fences if Gemini wraps output in ```json
-        if raw.startswith('```'):
-            raw = raw.split('```')[1]
-            if raw.startswith('json'):
-                raw = raw[4:]
-        result = json.loads(raw)
+        result = _run_gemini(parts)
         print(f'[GEMINI] flashcards count: {len(result.get("flashcards", []))}')
-    except json.JSONDecodeError:
-        print(f'[GEMINI JSON ERROR] raw was: {repr(raw[:500])}')
+    except TimeoutError:
+        return Response({'error': 'Generation timed out. Please try again.'}, status=status.HTTP_504_GATEWAY_TIMEOUT)
+    except json.JSONDecodeError as e:
+        print(f'[GEMINI JSON ERROR] {e}')
         return Response({'error': 'Gemini returned malformed JSON. Try again.'}, status=status.HTTP_502_BAD_GATEWAY)
     except Exception as e:
         print(f'[GEMINI ERROR] {e}')
@@ -391,3 +394,32 @@ def lecture_detail(request, pk):
 
     lecture.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def lecture_regenerate(request, pk):
+    lecture = get_object_or_404(Lecture, pk=pk, course__user=request.user)
+    if not lecture.transcript:
+        return Response({'error': 'Lecture has no transcript to regenerate from.'}, status=400)
+
+    try:
+        result = _run_gemini([f'Lecture transcript:\n\n{lecture.transcript}'])
+    except TimeoutError:
+        return Response({'error': 'Generation timed out. Please try again.'}, status=status.HTTP_504_GATEWAY_TIMEOUT)
+    except json.JSONDecodeError:
+        return Response({'error': 'Gemini returned malformed JSON. Try again.'}, status=status.HTTP_502_BAD_GATEWAY)
+    except Exception as e:
+        return Response({'error': f'Generation failed: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+    lecture.title = result.get('title', lecture.title)
+    lecture.summary = result.get('summary', lecture.summary)
+    lecture.notes = result.get('notes', lecture.notes)
+    lecture.save(update_fields=['title', 'summary', 'notes'])
+
+    lecture.flashcards.all().delete()
+    for i, fc in enumerate(result.get('flashcards', [])):
+        Flashcard.objects.create(lecture=lecture, order=i, front=fc['front'], back=fc['back'])
+
+    print(f'[REGENERATE] lecture {pk}: {len(result.get("flashcards", []))} flashcards')
+    return Response(LectureDetailSerializer(lecture).data)

@@ -85,6 +85,8 @@ export const api = {
     get: (id: number) => req<LectureDetail>(`/api/lectures/${id}/`),
     update: (id: number, body: { transcript: string }) =>
       req<LectureDetail>(`/api/lectures/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }),
+    regenerate: (id: number) =>
+      req<LectureDetail>(`/api/lectures/${id}/regenerate/`, { method: 'POST' }),
     delete: (id: number) => req<void>(`/api/lectures/${id}/`, { method: 'DELETE' }),
   },
 }
