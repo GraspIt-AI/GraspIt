@@ -9,6 +9,7 @@ export interface LectureResults {
   transcript: string
   title?: string
   summary?: string
+  tags?: string[]
 }
 
 // Simple module-level store to pass results between routes

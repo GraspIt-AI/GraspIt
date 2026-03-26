@@ -21,9 +21,10 @@ interface SavePanelProps {
   transcript: string
   title: string
   summary: string
+  tags: string[]
 }
 
-function SavePanel({ onSaved, flashcards, notes, transcript, title, summary }: SavePanelProps) {
+function SavePanel({ onSaved, flashcards, notes, transcript, title, summary, tags }: SavePanelProps) {
   const qc = useQueryClient()
   const [selectedCourseId, setSelectedCourseId] = useState<number | 'new' | null>(null)
   const [newCourseName, setNewCourseName] = useState('')
@@ -44,6 +45,7 @@ function SavePanel({ onSaved, flashcards, notes, transcript, title, summary }: S
         course: courseId,
         title,
         summary,
+        tags,
         transcript,
         notes,
         flashcards,
@@ -169,7 +171,7 @@ export default function ResultsPage() {
     )
   }
 
-  const { flashcards, notes, transcript: rawTranscript, title = 'Your Lecture', summary = '' } = state
+  const { flashcards, notes, transcript: rawTranscript, title = 'Your Lecture', summary = '', tags = [] } = state
   const transcript = editedTranscript ?? rawTranscript
   const { triggerPrint, printPortal } = usePrintNotes(title, notes)
 
@@ -222,6 +224,15 @@ export default function ResultsPage() {
             <h1 className="text-2xl font-bold text-gray-900 leading-tight">{title}</h1>
             {summary && (
               <p className="text-sm text-gray-500 mt-1 leading-snug">{summary}</p>
+            )}
+            {tags.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {tags.map((tag) => (
+                  <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium border border-indigo-100">
+                    {tag}
+                  </span>
+                ))}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-3 shrink-0 mt-1">
@@ -291,7 +302,7 @@ export default function ResultsPage() {
                 Next →
               </button>
             </div>
-            <p className="text-center text-xs text-gray-400">Use arrow keys to navigate · Space or Enter to flip</p>
+            <p className="text-xs text-gray-400 text-center">Arrow keys to navigate · Space to flip</p>
           </div>
         )}
 
@@ -365,6 +376,7 @@ export default function ResultsPage() {
             transcript={transcript}
             title={title}
             summary={summary}
+            tags={tags}
             onSaved={(courseId, lectureId) => setSaved({ courseId, lectureId })}
           />
         )}

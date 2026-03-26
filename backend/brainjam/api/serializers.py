@@ -13,7 +13,7 @@ class LectureListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lecture
-        fields = ['id', 'title', 'summary', 'created_at', 'flashcard_count']
+        fields = ['id', 'title', 'summary', 'tags', 'created_at', 'flashcard_count']
 
 
 class LectureDetailSerializer(serializers.ModelSerializer):
@@ -21,7 +21,7 @@ class LectureDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lecture
-        fields = ['id', 'course', 'title', 'summary', 'transcript', 'notes', 'created_at', 'flashcards']
+        fields = ['id', 'course', 'title', 'summary', 'tags', 'transcript', 'notes', 'created_at', 'flashcards']
 
     def create(self, validated_data):
         flashcards_data = validated_data.pop('flashcards', [])

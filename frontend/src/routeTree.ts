@@ -4,6 +4,7 @@ import ResultsPage from './routes/results'
 import CoursesPage from './routes/courses'
 import CourseDetailPage from './routes/course'
 import LecturePage from './routes/lecture'
+import TopicPage from './routes/topic'
 import LoginPage from './routes/login'
 import RegisterPage from './routes/register'
 import { isAuthenticated } from './authStore'
@@ -79,6 +80,15 @@ const lectureRoute = createRoute({
   },
 })
 
+const topicRoute = createRoute({
+  getParentRoute: () => authLayout,
+  path: '/courses/$courseId/topics/$tag',
+  component: () => {
+    const { courseId, tag } = topicRoute.useParams()
+    return TopicPage({ courseId: parseInt(courseId), tag })
+  },
+})
+
 export const routeTree = rootRoute.addChildren([
   loginRoute,
   registerRoute,
@@ -88,5 +98,6 @@ export const routeTree = rootRoute.addChildren([
     coursesRoute,
     courseDetailRoute,
     lectureRoute,
+    topicRoute,
   ]),
 ])

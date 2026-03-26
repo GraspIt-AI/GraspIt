@@ -37,6 +37,15 @@ export default function LecturePage({ lectureId }: Props) {
     },
   })
 
+  const updateTags = useMutation({
+    mutationFn: (tags: string[]) => api.lectures.update(lectureId, { tags }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['lecture', lectureId] })
+      qc.invalidateQueries({ queryKey: ['course', lecture?.course] })
+      setEditingTags(false)
+    },
+  })
+
   const regenerate = useMutation({
     mutationFn: () => api.lectures.regenerate(lectureId),
     onSuccess: () => {
@@ -62,6 +71,9 @@ export default function LecturePage({ lectureId }: Props) {
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [editingTranscript, setEditingTranscript] = useState(false)
   const [transcriptDraft, setTranscriptDraft] = useState('')
+  const [editingTags, setEditingTags] = useState(false)
+  const [tagsDraft, setTagsDraft] = useState<string[]>([])
+  const [tagInput, setTagInput] = useState('')
   const { triggerPrint, printPortal } = usePrintNotes(lecture?.title ?? '', lecture?.notes ?? '')
 
   const handleKey = useCallback((e: KeyboardEvent) => {
@@ -122,6 +134,24 @@ export default function LecturePage({ lectureId }: Props) {
     })
   }
 
+  function startEditingTags() {
+    setTagsDraft([...(lecture?.tags ?? [])])
+    setTagInput('')
+    setEditingTags(true)
+  }
+
+  function addTag() {
+    const t = tagInput.trim()
+    if (t && !tagsDraft.includes(t)) {
+      setTagsDraft((prev) => [...prev, t])
+    }
+    setTagInput('')
+  }
+
+  function removeTag(tag: string) {
+    setTagsDraft((prev) => prev.filter((t) => t !== tag))
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 flex flex-col items-center px-4 py-12">
       <div className="w-full max-w-lg bg-white rounded-3xl shadow-xl p-8 flex flex-col gap-6">
@@ -138,6 +168,91 @@ export default function LecturePage({ lectureId }: Props) {
             <h1 className="text-2xl font-bold text-gray-900 leading-tight mt-1">{lecture.title}</h1>
             {lecture.summary && (
               <p className="text-sm text-gray-500 mt-1 leading-snug">{lecture.summary}</p>
+            )}
+
+            {/* Tags */}
+            {editingTags ? (
+              <div className="mt-2 flex flex-col gap-2">
+                <div className="flex flex-wrap gap-1.5">
+                  {tagsDraft.map((tag) => (
+                    <span key={tag} className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium border border-indigo-100">
+                      {tag}
+                      <button onClick={() => removeTag(tag)} className="text-indigo-400 hover:text-red-500 leading-none ml-0.5">×</button>
+                    </span>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    autoFocus
+                    className="flex-1 text-xs border border-gray-200 rounded-lg px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-indigo-200"
+                    placeholder="Add tag (press Enter)"
+                    value={tagInput}
+                    onChange={(e) => setTagInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
+                  />
+                  <button onClick={addTag} className="text-xs px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-medium border border-indigo-200">
+                    Add
+                  </button>
+                </div>
+                {/* Suggestions: tags already used in this course, not yet in draft */}
+                {(() => {
+                  const suggestions = [
+                    ...new Set(
+                      (course?.lectures ?? [])
+                        .filter((l) => l.id !== lectureId)
+                        .flatMap((l) => l.tags ?? [])
+                    ),
+                  ].filter((t) => !tagsDraft.includes(t))
+                  if (suggestions.length === 0) return null
+                  return (
+                    <div className="flex flex-wrap gap-1.5">
+                      <span className="text-xs text-gray-400 self-center">Existing:</span>
+                      {suggestions.map((t) => (
+                        <button
+                          key={t}
+                          onClick={() => setTagsDraft((prev) => [...prev, t])}
+                          className="text-xs px-2 py-0.5 rounded-full border border-dashed border-indigo-200 text-indigo-500 hover:bg-indigo-50 transition-colors"
+                        >
+                          + {t}
+                        </button>
+                      ))}
+                    </div>
+                  )
+                })()}
+                <div className="flex items-center gap-2">
+                  {updateTags.error && (
+                    <span className="text-xs text-red-500">{(updateTags.error as Error).message}</span>
+                  )}
+                  <button
+                    onClick={() => setEditingTags(false)}
+                    className="text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => updateTags.mutate(tagsDraft)}
+                    disabled={updateTags.isPending}
+                    className="text-xs px-3 py-1 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 font-medium"
+                  >
+                    {updateTags.isPending ? 'Saving…' : 'Save tags'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                {lecture.tags?.map((tag) => (
+                  <span key={tag} className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium border border-indigo-100">
+                    {tag}
+                  </span>
+                ))}
+                <button
+                  onClick={startEditingTags}
+                  className="text-xs text-gray-400 hover:text-indigo-500 transition-colors"
+                  title="Edit tags"
+                >
+                  {lecture.tags?.length > 0 ? 'Edit tags' : '+ Add tags'}
+                </button>
+              </div>
             )}
           </div>
           {confirmDelete ? (
@@ -242,7 +357,7 @@ export default function LecturePage({ lectureId }: Props) {
                 Next →
               </button>
             </div>
-            <p className="text-center text-xs text-gray-400">Use arrow keys to navigate · Space or Enter to flip</p>
+            <p className="text-xs text-gray-400 text-center">Arrow keys to navigate · Space to flip</p>
           </div>
         )}
 

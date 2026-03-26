@@ -12,7 +12,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from openai import OpenAI
 from google import genai
 from google.genai import types
-from .models import Course, Lecture, Flashcard
+from .models import Course, Lecture, Flashcard, TopicExam
 from .serializers import (
     CourseListSerializer, CourseDetailSerializer,
     LectureDetailSerializer,
@@ -27,9 +27,11 @@ _SYSTEM_PROMPT = (
     '(photos, slides, PDFs, documents), '
     'output ONLY valid JSON with exactly this shape — no markdown fences, no extra keys:\n'
     '{"title": "short lecture title", "summary": "1-2 sentence overview", '
+    '"tags": ["tag1", "tag2"], '
     '"flashcards": [{"front": "question", "back": "answer"}], "notes": "markdown string"}\n\n'
     'TITLE: A concise descriptive title for this lecture (5-10 words, e.g. "Introduction to Photosynthesis").\n'
-    'SUMMARY: 1-2 sentences summarising what the lecture covered.\n\n'
+    'SUMMARY: 1-2 sentences summarising what the lecture covered.\n'
+    'TAGS: Generate up to 6 short topic tags (2-4 words each) naming the key subjects covered, e.g. "Krebs Cycle", "ATP Synthesis", "Cell Respiration". Use as few as needed — if the lecture only covers one or two topics, one or two tags is fine. These will be used to filter and group lectures.\n\n'
     'FLASHCARD RULES:\n'
     '- Generate 10-20 flashcards covering the key concepts.\n'
     '- Prefer concept-understanding questions over simple trivia (ask "why" and "how", not just "what").\n'
@@ -387,9 +389,15 @@ def lecture_detail(request, pk):
         return Response(LectureDetailSerializer(lecture).data)
 
     if request.method == 'PATCH':
+        fields = []
         if 'transcript' in request.data:
             lecture.transcript = request.data['transcript']
-            lecture.save(update_fields=['transcript'])
+            fields.append('transcript')
+        if 'tags' in request.data:
+            lecture.tags = request.data['tags']
+            fields.append('tags')
+        if fields:
+            lecture.save(update_fields=fields)
         return Response(LectureDetailSerializer(lecture).data)
 
     lecture.delete()
@@ -415,7 +423,8 @@ def lecture_regenerate(request, pk):
     lecture.title = result.get('title', lecture.title)
     lecture.summary = result.get('summary', lecture.summary)
     lecture.notes = result.get('notes', lecture.notes)
-    lecture.save(update_fields=['title', 'summary', 'notes'])
+    lecture.tags = result.get('tags', lecture.tags)
+    lecture.save(update_fields=['title', 'summary', 'notes', 'tags'])
 
     lecture.flashcards.all().delete()
     for i, fc in enumerate(result.get('flashcards', [])):
@@ -423,3 +432,133 @@ def lecture_regenerate(request, pk):
 
     print(f'[REGENERATE] lecture {pk}: {len(result.get("flashcards", []))} flashcards')
     return Response(LectureDetailSerializer(lecture).data)
+
+
+_EXAM_PROMPT = (
+    'You are an expert exam writer. Given lecture transcripts and notes on a specific topic, '
+    'generate a challenging exam that closely resembles a real university exam.\n\n'
+    'Output ONLY valid JSON — an array with NO markdown fences. Each question must have a "type" field.\n\n'
+    'MCQ format (conceptual, reasoning, comparison questions):\n'
+    '{"type": "mcq", "question": "...", "options": ["A) ...", "B) ...", "C) ...", "D) ..."], "correct": 0, '
+    '"explanation": "Why the correct answer is right and why each wrong option is incorrect."}\n\n'
+    'Numeric format (calculations, derivations, specific values):\n'
+    '{"type": "numeric", "question": "... (Show all working.)", "answer": "42.5 kJ/mol", '
+    '"explanation": "Full step-by-step worked solution: state the formula, substitute values, show every step, final answer with units."}\n\n'
+    'Short answer format (explain, describe, compare, analyse — anything needing a written response):\n'
+    '{"type": "short_answer", "question": "...", '
+    '"answer": "A comprehensive model answer covering all key points a student should mention."}\n\n'
+    'RULES:\n'
+    '- Generate 8-12 questions total.\n'
+    '- Choose types based on what fits the content naturally. A well-rounded exam uses all three types.\n'
+    '- "correct" in MCQ is the 0-based index of the correct option.\n'
+    '- Questions should test deep understanding: reasoning, application, multi-step problems.\n'
+    '- Numeric explanations must show every step; short_answer model answers must be thorough.\n'
+    '- Vary difficulty: roughly 30% easy, 50% medium, 20% hard.\n'
+    '- All MCQ distractors should be plausible — common mistakes or close values, not obviously wrong.\n'
+)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def course_exam(request, pk):
+    course = get_object_or_404(Course, pk=pk, user=request.user)
+
+    if request.method == 'GET':
+        tag = (request.query_params.get('tag') or '').strip()
+        if not tag:
+            return Response({'error': 'Tag is required.'}, status=400)
+        try:
+            exam = TopicExam.objects.get(course=course, tag=tag)
+        except TopicExam.DoesNotExist:
+            return Response({'found': False})
+        current_ids = sorted(l.pk for l in course.lectures.all() if tag in (l.tags or []))
+        stale = current_ids != sorted(exam.lecture_snapshot)
+        return Response({
+            'found': True,
+            'questions': exam.questions,
+            'stale': stale,
+            'generated_at': exam.updated_at,
+        })
+
+    # POST: generate (and save/overwrite)
+    tag = (request.data.get('tag') or '').strip()
+    if not tag:
+        return Response({'error': 'Tag is required.'}, status=400)
+
+    lectures = [l for l in course.lectures.all() if tag in (l.tags or [])]
+    if not lectures:
+        return Response({'error': f'No lectures found with tag "{tag}".'}, status=404)
+
+    parts = [f'Topic: {tag}\n\nYou are generating an exam covering the following lecture materials on this topic.\n']
+    for lec in lectures:
+        parts.append(f'--- Lecture: {lec.title} ---\nTranscript:\n{lec.transcript}\n\nNotes:\n{lec.notes}\n')
+
+    try:
+        gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+
+        def _generate():
+            return gemini_client.models.generate_content(
+                model='gemini-2.5-flash',
+                contents=['\n\n'.join(parts)],
+                config=types.GenerateContentConfig(
+                    system_instruction=_EXAM_PROMPT,
+                    max_output_tokens=8192,
+                    temperature=0.5,
+                ),
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_generate)
+            try:
+                response = future.result(timeout=90)
+            except concurrent.futures.TimeoutError:
+                raise TimeoutError('Exam generation timed out.')
+
+        raw = response.text.strip()
+        if raw.startswith('```'):
+            raw = raw.split('```')[1]
+            if raw.startswith('json'):
+                raw = raw[4:]
+        questions = json.loads(raw)
+
+        TopicExam.objects.update_or_create(
+            course=course,
+            tag=tag,
+            defaults={
+                'questions': questions,
+                'lecture_snapshot': sorted(l.pk for l in lectures),
+            },
+        )
+        print(f'[EXAM] course {pk}, tag="{tag}", lectures={len(lectures)}, questions={len(questions)}')
+        return Response({'found': True, 'questions': questions, 'stale': False})
+
+    except TimeoutError:
+        return Response({'error': 'Exam generation timed out. Please try again.'}, status=status.HTTP_504_GATEWAY_TIMEOUT)
+    except json.JSONDecodeError:
+        return Response({'error': 'Gemini returned malformed JSON. Try again.'}, status=status.HTTP_502_BAD_GATEWAY)
+    except Exception as e:
+        print(f'[EXAM ERROR] {e}')
+        return Response({'error': f'Exam generation failed: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def course_topic(request, pk):
+    course = get_object_or_404(Course, pk=pk, user=request.user)
+    tag = (request.query_params.get('tag') or '').strip()
+    if not tag:
+        return Response({'error': 'Tag is required.'}, status=400)
+
+    lectures = [l for l in course.lectures.all() if tag in (l.tags or [])]
+    result = []
+    for lec in lectures:
+        result.append({
+            'id': lec.id,
+            'title': lec.title,
+            'notes': lec.notes,
+            'flashcards': [
+                {'front': fc.front, 'back': fc.back}
+                for fc in lec.flashcards.order_by('order')
+            ],
+        })
+    return Response({'tag': tag, 'course_name': course.name, 'lectures': result})

@@ -37,6 +37,21 @@ function LectureCard({ lecture, courseId }: { lecture: LectureListItem; courseId
           <span>·</span>
           <span>{lecture.flashcard_count} flashcard{lecture.flashcard_count !== 1 ? 's' : ''}</span>
         </div>
+        {lecture.tags?.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {lecture.tags.map((tag) => (
+              <Link
+                key={tag}
+                to="/courses/$courseId/topics/$tag"
+                params={{ courseId: String(courseId), tag }}
+                onClick={(e) => e.stopPropagation()}
+                className="text-xs px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-600 font-medium border border-indigo-100 hover:bg-indigo-100 transition-colors"
+              >
+                {tag}
+              </Link>
+            ))}
+          </div>
+        )}
       </Link>
       {confirmDelete ? (
         <div className="flex items-center gap-2 shrink-0 mt-0.5">
@@ -93,6 +108,8 @@ export default function CourseDetailPage({ courseId }: Props) {
       </div>
     )
   }
+
+  const allTags = [...new Set(course.lectures.flatMap((l) => l.tags ?? []))]
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-50 px-4 py-12">
@@ -157,7 +174,32 @@ export default function CourseDetailPage({ courseId }: Props) {
             </p>
             <p className="text-xs text-gray-500 mt-0.5">Flashcards</p>
           </div>
+          {allTags.length > 0 && (
+            <div className="bg-white rounded-2xl px-5 py-3 border border-gray-100 text-center flex-1">
+              <p className="text-2xl font-bold text-gray-900">{allTags.length}</p>
+              <p className="text-xs text-gray-500 mt-0.5">Topics</p>
+            </div>
+          )}
         </div>
+
+        {/* Topics */}
+        {allTags.length > 0 && (
+          <div className="flex flex-col gap-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Topics</h2>
+            <div className="flex flex-wrap gap-2">
+              {allTags.map((tag) => (
+                <Link
+                  key={tag}
+                  to="/courses/$courseId/topics/$tag"
+                  params={{ courseId: String(courseId), tag }}
+                  className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-full border border-indigo-200 bg-white text-indigo-700 font-medium hover:bg-indigo-600 hover:text-white hover:border-indigo-600 transition-colors"
+                >
+                  {tag}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Lectures list */}
         {course.lectures.length > 0 ? (
