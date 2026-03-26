@@ -2,10 +2,12 @@ import { useState, useRef, useEffect } from 'react'
 
 interface Props {
   onRecordingComplete: (blob: Blob) => void
+  onReset?: () => void
 }
 
-export default function AudioRecorder({ onRecordingComplete }: Props) {
-  const [state, setState] = useState<'idle' | 'recording' | 'done'>('idle')
+export default function AudioRecorder({ onRecordingComplete, onReset }: Props) {
+  const [state, setState] = useState<'idle' | 'recording' | 'done' | 'error'>('idle')
+  const [errorMsg, setErrorMsg] = useState<string>('')
   const [seconds, setSeconds] = useState(0)
   const mediaRecorder = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
@@ -18,23 +20,34 @@ export default function AudioRecorder({ onRecordingComplete }: Props) {
   }, [])
 
   async function startRecording() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    const recorder = new MediaRecorder(stream)
-    mediaRecorder.current = recorder
-    chunks.current = []
+    setErrorMsg('')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const recorder = new MediaRecorder(stream)
+      mediaRecorder.current = recorder
+      chunks.current = []
 
-    recorder.ondataavailable = (e) => chunks.current.push(e.data)
-    recorder.onstop = () => {
-      const blob = new Blob(chunks.current, { type: recorder.mimeType })
-      onRecordingComplete(blob)
-      stream.getTracks().forEach((t) => t.stop())
-      setState('done')
+      recorder.ondataavailable = (e) => chunks.current.push(e.data)
+      recorder.onstop = () => {
+        const blob = new Blob(chunks.current, { type: recorder.mimeType })
+        onRecordingComplete(blob)
+        stream.getTracks().forEach((t) => t.stop())
+        setState('done')
+      }
+
+      recorder.start()
+      setState('recording')
+      setSeconds(0)
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000)
+    } catch (e: unknown) {
+      const name = e instanceof Error ? e.name : ''
+      if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+        setErrorMsg('Microphone access denied. Please allow microphone access in your browser settings and reload the page.')
+      } else {
+        setErrorMsg('Could not access microphone. Please check your device settings.')
+      }
+      setState('error')
     }
-
-    recorder.start()
-    setState('recording')
-    setSeconds(0)
-    timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000)
   }
 
   function stopRecording() {
@@ -45,6 +58,8 @@ export default function AudioRecorder({ onRecordingComplete }: Props) {
   function reset() {
     setState('idle')
     setSeconds(0)
+    setErrorMsg('')
+    onReset?.()
   }
 
   const fmt = (s: number) =>
@@ -91,6 +106,20 @@ export default function AudioRecorder({ onRecordingComplete }: Props) {
           <p className="text-green-700 font-medium">Audio captured ({fmt(seconds)})</p>
           <button onClick={reset} className="text-sm text-gray-400 underline hover:text-gray-600">
             Re-record
+          </button>
+        </div>
+      )}
+
+      {state === 'error' && (
+        <div className="flex flex-col items-center gap-3 text-center">
+          <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+            <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+          </div>
+          <p className="text-sm text-red-600 max-w-xs">{errorMsg}</p>
+          <button onClick={reset} className="text-sm text-gray-400 underline hover:text-gray-600">
+            Try again
           </button>
         </div>
       )}
