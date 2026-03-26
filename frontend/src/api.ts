@@ -1,3 +1,5 @@
+export const API_BASE = import.meta.env.VITE_API_URL ?? ''
+
 export interface CourseListItem {
   id: number
   name: string
@@ -82,7 +84,7 @@ export async function streamCourseChat(
 ): Promise<void> {
   const { getAccessToken } = await import('./authStore')
   const token = getAccessToken()
-  const res = await fetch(`/api/courses/${courseId}/chat/`, {
+  const res = await fetch(`${API_BASE}/api/courses/${courseId}/chat/`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -112,7 +114,7 @@ export async function streamCourseChat(
 export async function downloadFile(url: string, filename: string): Promise<void> {
   const { getAccessToken } = await import('./authStore')
   const token = getAccessToken()
-  const res = await fetch(url, {
+  const res = await fetch(`${API_BASE}${url}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   })
   if (!res.ok) {
@@ -132,7 +134,7 @@ export async function downloadFile(url: string, filename: string): Promise<void>
 async function req<T>(url: string, options?: RequestInit): Promise<T> {
   const { getAccessToken } = await import('./authStore')
   const token = getAccessToken()
-  const res = await fetch(url, {
+  const res = await fetch(`${API_BASE}${url}`, {
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

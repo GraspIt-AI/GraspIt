@@ -8,3 +8,8 @@ google-genai
 pillow
 djangorestframework-simplejwt
 genanki
+gunicorn
+python-pptx
+python-docx
+openpyxl
+whitenoise
