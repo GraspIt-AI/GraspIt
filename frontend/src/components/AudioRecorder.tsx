@@ -18,7 +18,7 @@ function formatSize(bytes: number) {
 
 export default function AudioRecorder({ onRecordingComplete, onReset }: Props) {
   const [mode, setMode] = useState<'record' | 'upload'>('record')
-  const [recState, setRecState] = useState<'idle' | 'recording' | 'done' | 'error'>('idle')
+  const [recState, setRecState] = useState<'idle' | 'recording' | 'paused' | 'done' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [seconds, setSeconds] = useState(0)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
@@ -61,6 +61,18 @@ export default function AudioRecorder({ onRecordingComplete, onReset }: Props) {
       }
       setRecState('error')
     }
+  }
+
+  function pauseRecording() {
+    mediaRecorder.current?.pause()
+    if (timerRef.current) clearInterval(timerRef.current)
+    setRecState('paused')
+  }
+
+  function resumeRecording() {
+    mediaRecorder.current?.resume()
+    timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000)
+    setRecState('recording')
   }
 
   function stopRecording() {
@@ -136,21 +148,53 @@ export default function AudioRecorder({ onRecordingComplete, onReset }: Props) {
             </button>
           )}
 
-          {recState === 'recording' && (
+          {(recState === 'recording' || recState === 'paused') && (
             <div className="flex flex-col items-center gap-3">
               <div className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-red-500 font-mono text-lg font-semibold">{formatSeconds(seconds)}</span>
+                {recState === 'recording'
+                  ? <span className="w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+                  : <span className="w-3 h-3 rounded-full bg-amber-400" />
+                }
+                <span className={`font-mono text-lg font-semibold ${recState === 'paused' ? 'text-amber-500' : 'text-red-500'}`}>
+                  {formatSeconds(seconds)}
+                </span>
               </div>
-              <button
-                onClick={stopRecording}
-                className="w-20 h-20 rounded-full bg-gray-800 hover:bg-gray-700 text-white flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
-              >
-                <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
-                  <rect x="6" y="6" width="12" height="12" />
-                </svg>
-              </button>
-              <p className="text-sm text-gray-500">Recording… tap to stop</p>
+              <div className="flex items-center gap-4">
+                {recState === 'recording' ? (
+                  <button
+                    onClick={pauseRecording}
+                    title="Pause"
+                    className="w-14 h-14 rounded-full bg-amber-400 hover:bg-amber-500 text-white flex items-center justify-center shadow-md transition-transform hover:scale-105 active:scale-95"
+                  >
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                      <rect x="6" y="5" width="4" height="14" />
+                      <rect x="14" y="5" width="4" height="14" />
+                    </svg>
+                  </button>
+                ) : (
+                  <button
+                    onClick={resumeRecording}
+                    title="Resume"
+                    className="w-14 h-14 rounded-full bg-green-500 hover:bg-green-600 text-white flex items-center justify-center shadow-md transition-transform hover:scale-105 active:scale-95"
+                  >
+                    <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                  </button>
+                )}
+                <button
+                  onClick={stopRecording}
+                  title="Stop"
+                  className="w-20 h-20 rounded-full bg-gray-800 hover:bg-gray-700 text-white flex items-center justify-center shadow-lg transition-transform hover:scale-105 active:scale-95"
+                >
+                  <svg className="w-8 h-8" fill="currentColor" viewBox="0 0 24 24">
+                    <rect x="6" y="6" width="12" height="12" />
+                  </svg>
+                </button>
+              </div>
+              <p className="text-sm text-gray-500">
+                {recState === 'paused' ? 'Paused — resume or stop' : 'Recording… pause or stop'}
+              </p>
             </div>
           )}
 
