@@ -58,8 +58,48 @@ _SYSTEM_PROMPT = (
 )
 
 
+def _extract_json(raw: str):
+    """
+    Robustly extract and parse JSON from Gemini output.
+
+    gemini-2.5-flash is a thinking model — it can prefix its answer with
+    reasoning text that itself contains '{' or '[' characters. Strategy:
+      1. If markdown fences are present, extract the content inside the LAST fence block.
+      2. If the text still doesn't start with '{' or '[', find the LAST '{...}' or '[...]'
+         block (last, not first, because thinking text comes before the answer).
+      3. Parse and return.
+    """
+    raw = raw.strip()
+    print(f'[GEMINI] raw response (first 500): {repr(raw[:500])}')
+
+    # Step 1: strip markdown fences — use the last match in case thinking text has fences too
+    if '```' in raw:
+        matches = re.findall(r'```(?:json)?\s*([\s\S]*?)```', raw)
+        if matches:
+            raw = matches[-1].strip()
+
+    # Step 2: if still not starting with a JSON delimiter, grab the last {..} or [..]
+    if not raw.startswith(('{', '[')):
+        # Find the last occurrence of a top-level JSON structure
+        obj_match = None
+        arr_match = None
+        for m in re.finditer(r'\{[\s\S]*\}', raw):
+            obj_match = m
+        for m in re.finditer(r'\[[\s\S]*\]', raw):
+            arr_match = m
+        # Pick whichever starts later in the string (closer to the real answer)
+        if obj_match and arr_match:
+            raw = (obj_match if obj_match.start() > arr_match.start() else arr_match).group(0)
+        elif obj_match:
+            raw = obj_match.group(0)
+        elif arr_match:
+            raw = arr_match.group(0)
+
+    return json.loads(raw)
+
+
 def _run_gemini(parts):
-    """Run Gemini generation on the given parts list. Returns parsed JSON dict. Raises on error."""
+    """Run Gemini generation on the given parts list. Returns parsed JSON. Raises on error."""
     gemini_client = genai.Client(api_key=settings.GEMINI_API_KEY)
 
     def _generate():
@@ -80,19 +120,7 @@ def _run_gemini(parts):
         except concurrent.futures.TimeoutError:
             raise TimeoutError('Generation timed out.')
 
-    raw = response.text.strip()
-    print(f'[GEMINI] raw response (first 300): {repr(raw[:300])}')
-    # Strip markdown fences if present
-    if '```' in raw:
-        match = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
-        if match:
-            raw = match.group(1).strip()
-    # Extract the outermost JSON object or array as a fallback
-    if not raw.startswith(('{', '[')):
-        match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', raw)
-        if match:
-            raw = match.group(1)
-    return json.loads(raw)
+    return _extract_json(response.text)
 
 
 def _user_tokens(user):
@@ -589,16 +617,7 @@ def course_exam(request, pk):
             except concurrent.futures.TimeoutError:
                 raise TimeoutError('Exam generation timed out.')
 
-        raw = response.text.strip()
-        if '```' in raw:
-            match = re.search(r'```(?:json)?\s*([\s\S]*?)```', raw)
-            if match:
-                raw = match.group(1).strip()
-        if not raw.startswith(('{', '[')):
-            match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', raw)
-            if match:
-                raw = match.group(1)
-        questions = json.loads(raw)
+        questions = _extract_json(response.text)
 
         TopicExam.objects.update_or_create(
             course=course,
