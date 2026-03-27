@@ -29,9 +29,9 @@ export default function LoginPage() {
     <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm flex flex-col gap-6">
         {/* Brand */}
-        <div className="text-center mb-2">
-          <h1 className="text-3xl font-bold text-gray-900 tracking-tight">GraspIt</h1>
-          <p className="text-gray-400 mt-1 text-sm">Sign in to continue learning</p>
+        <div className="flex flex-col items-center mb-2">
+          <img src="/logo.png" alt="GraspIt" className="h-16 w-auto mb-2" />
+          <p className="text-gray-400 text-sm">Sign in to continue learning</p>
         </div>
 
         {/* Form card */}

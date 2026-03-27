@@ -199,7 +199,7 @@ export default function HomePage() {
     <div className="min-h-screen bg-[#fafafa]">
       {/* Sticky nav */}
       <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 px-6 h-14 flex items-center justify-between">
-        <span className="text-base font-bold text-gray-900 tracking-tight">GraspIt</span>
+        <img src="/logo.png" alt="GraspIt" className="h-8 w-auto" />
         <div className="flex items-center gap-2">
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('graspit:search'))}
