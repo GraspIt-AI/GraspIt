@@ -257,6 +257,375 @@ def _user_data(user):
     return {'id': user.id, 'email': user.email, 'username': user.username}
 
 
+# ── Demo data seed ────────────────────────────────────────────────────────────
+
+def _seed_demo_data(user):
+    """Create two sample courses with lectures, flashcards, notes, tags, and a completed exam."""
+
+    # ── Course 1: Biology ─────────────────────────────────────────────────────
+    bio = Course.objects.create(
+        user=user,
+        name='Introduction to Biology',
+        description='Foundational concepts in cell biology and metabolism.',
+        color='#10b981',
+    )
+
+    lec1 = Lecture.objects.create(
+        course=bio,
+        title='Cell Structure and Function',
+        summary='An overview of eukaryotic cell organelles and their roles in maintaining cell homeostasis.',
+        transcript=(
+            'Today we are going to talk about the cell — the fundamental unit of life. '
+            'Every organism is made of cells, and eukaryotic cells have a number of specialised compartments called organelles. '
+            'The nucleus houses the DNA and acts as the control centre. '
+            'The mitochondria produce ATP through oxidative phosphorylation and are often called the powerhouse of the cell. '
+            'The endoplasmic reticulum exists in two forms: rough ER, which is studded with ribosomes and synthesises proteins destined for secretion or membrane insertion, '
+            'and smooth ER, which is involved in lipid synthesis and detoxification. '
+            'The Golgi apparatus sorts and packages proteins, adding carbohydrate tags before shipping them to their final destination. '
+            'Lysosomes contain digestive enzymes and handle waste disposal. '
+            'The cell membrane is a phospholipid bilayer with embedded proteins that controls what enters and leaves the cell.'
+        ),
+        notes=(
+            '## Key Takeaways\n\n'
+            '- Eukaryotic cells contain membrane-bound organelles that divide labour within the cell.\n'
+            '- The nucleus is the control centre; mitochondria produce energy as ATP.\n'
+            '- The endomembrane system (ER → Golgi → vesicles) handles protein and lipid trafficking.\n'
+            '- The cell membrane is selectively permeable, maintaining internal conditions.\n'
+            '- Each organelle has a distinct structure that directly supports its function.\n\n'
+            '## The Nucleus\n\n'
+            '- Contains **DNA** wound around **histone** proteins forming **chromatin**.\n'
+            '- Surrounded by the **nuclear envelope** (double membrane) with **nuclear pores** for transport.\n'
+            '- Houses the **nucleolus**, where ribosomal RNA (rRNA) is synthesised.\n\n'
+            '## Mitochondria\n\n'
+            '- Double-membrane organelle; inner membrane forms **cristae** to maximise surface area.\n'
+            '- Site of **oxidative phosphorylation** — produces the majority of cellular **ATP**.\n'
+            '- Contains its own DNA (circular), evidence for the **endosymbiotic theory**.\n\n'
+            '## Endoplasmic Reticulum\n\n'
+            '- **Rough ER**: studded with ribosomes; synthesises secretory and membrane proteins.\n'
+            '- **Smooth ER**: no ribosomes; involved in **lipid synthesis**, calcium storage, and detoxification.\n\n'
+            '## Golgi Apparatus\n\n'
+            '- Receives vesicles from the ER (**cis face**) and dispatches them (**trans face**).\n'
+            '- Modifies proteins by adding **oligosaccharide** chains (**glycosylation**).\n'
+            '- Sorts proteins to lysosomes, plasma membrane, or secretion.\n\n'
+            '## Cell Membrane\n\n'
+            '- **Fluid mosaic model**: phospholipid bilayer with freely moving proteins.\n'
+            '- **Integral proteins** span the bilayer; **peripheral proteins** attach to the surface.\n'
+            '- **Selective permeability** controlled by channel proteins, carrier proteins, and pumps.\n'
+        ),
+        tags=['Cell Biology', 'Organelles', 'Cell Membrane'],
+    )
+
+    flashcards1 = [
+        ('What is the function of the mitochondria?',
+         'To produce ATP through oxidative phosphorylation — the "powerhouse of the cell".'),
+        ('What distinguishes rough ER from smooth ER?',
+         'Rough ER is studded with ribosomes and synthesises secretory proteins; smooth ER lacks ribosomes and is involved in lipid synthesis and detoxification.'),
+        ('What is the fluid mosaic model?',
+         'A model describing the cell membrane as a phospholipid bilayer with freely moving embedded proteins, giving it both fluid and mosaic properties.'),
+        ('What is the role of the Golgi apparatus?',
+         'To sort, modify (e.g. glycosylation), and package proteins received from the ER for delivery to lysosomes, the plasma membrane, or secretion.'),
+        ('What structural feature increases the surface area of mitochondria?',
+         'Cristae — folds of the inner mitochondrial membrane that greatly increase the surface area available for ATP synthesis.'),
+        ('What is the nucleolus and what does it produce?',
+         'A dense region within the nucleus that synthesises ribosomal RNA (rRNA) and assembles ribosome subunits.'),
+        ('What evidence supports the endosymbiotic theory for mitochondria?',
+         'Mitochondria have their own circular DNA, replicate by binary fission, and have double membranes — all consistent with an ancient bacterial ancestor.'),
+        ('What is selective permeability?',
+         'The property of the cell membrane allowing only certain molecules to pass through, controlled by channel proteins, carrier proteins, and pumps.'),
+    ]
+    for i, (front, back) in enumerate(flashcards1):
+        Flashcard.objects.create(lecture=lec1, front=front, back=back, order=i)
+
+    lec2 = Lecture.objects.create(
+        course=bio,
+        title='Photosynthesis and Cellular Respiration',
+        summary='How cells convert light energy into chemical energy (photosynthesis) and extract it from glucose (cellular respiration), including the key stages and molecules involved.',
+        transcript=(
+            'In this lecture we cover energy metabolism — specifically photosynthesis and cellular respiration. '
+            'Photosynthesis occurs in the chloroplast and has two stages. '
+            'The light-dependent reactions occur in the thylakoid membrane. '
+            'Light energy is captured by chlorophyll and used to split water, producing oxygen as a by-product and generating ATP and NADPH. '
+            'The light-independent reactions, or the Calvin cycle, occur in the stroma. '
+            'They use ATP and NADPH to fix CO2 into glucose via the enzyme RuBisCO. '
+            'Cellular respiration is essentially the reverse — glucose is broken down to release energy as ATP. '
+            'Glycolysis in the cytoplasm converts glucose to pyruvate, yielding 2 ATP and 2 NADH. '
+            'Pyruvate then enters the mitochondrial matrix for the Krebs cycle, generating NADH, FADH2, and a small amount of ATP. '
+            'Finally, the electron transport chain on the inner mitochondrial membrane uses NADH and FADH2 to pump protons and drive ATP synthase, '
+            'producing approximately 32–34 ATP per glucose molecule.'
+        ),
+        notes=(
+            '## Key Takeaways\n\n'
+            '- Photosynthesis converts light energy → chemical energy (glucose); cellular respiration converts glucose → ATP.\n'
+            '- Photosynthesis has two stages: light-dependent reactions (thylakoid) and the Calvin cycle (stroma).\n'
+            '- Cellular respiration has three stages: glycolysis (cytoplasm), Krebs cycle (mitochondrial matrix), ETC (inner membrane).\n'
+            '- Net ATP yield from one glucose: ~2 from glycolysis, ~2 from Krebs, ~32–34 from oxidative phosphorylation.\n'
+            '- NADH and FADH2 are electron carriers that shuttle energy to the ETC.\n\n'
+            '## Photosynthesis\n\n'
+            '**Overall equation:**\n\n'
+            '$$6CO_2 + 6H_2O \\xrightarrow{\\text{light}} C_6H_{12}O_6 + 6O_2$$\n\n'
+            '### Light-Dependent Reactions (Thylakoid Membrane)\n\n'
+            '- **Chlorophyll** absorbs light (mainly red and blue wavelengths).\n'
+            '- **Photolysis of water** releases $O_2$ as a by-product.\n'
+            '- Products: **ATP** (via photophosphorylation) and **NADPH**.\n\n'
+            '### Calvin Cycle (Stroma)\n\n'
+            '- **RuBisCO** catalyses carbon fixation: $CO_2 + RuBP \\rightarrow$ 3-phosphoglycerate.\n'
+            '- ATP and NADPH are consumed to regenerate RuBP and produce **G3P** (building block for glucose).\n\n'
+            '## Cellular Respiration\n\n'
+            '**Overall equation:**\n\n'
+            '$$C_6H_{12}O_6 + 6O_2 \\rightarrow 6CO_2 + 6H_2O + \\text{ATP}$$\n\n'
+            '### Glycolysis (Cytoplasm)\n\n'
+            '- Glucose ($C_6$) → 2 Pyruvate ($C_3$).\n'
+            '- Net yield: **2 ATP** + **2 NADH**.\n\n'
+            '### Krebs Cycle (Mitochondrial Matrix)\n\n'
+            '- Each pyruvate converted to **acetyl-CoA** (releasing $CO_2$).\n'
+            '- Per glucose: **2 ATP**, **6 NADH**, **2 FADH2**.\n\n'
+            '### Electron Transport Chain (Inner Mitochondrial Membrane)\n\n'
+            '- NADH and FADH2 donate electrons; $O_2$ is the final electron acceptor.\n'
+            '- Proton gradient drives **ATP synthase** (chemiosmosis).\n'
+            '- Yield: **~32–34 ATP** per glucose.\n'
+        ),
+        tags=['Photosynthesis', 'Krebs Cycle', 'ATP Synthesis', 'Cell Respiration'],
+    )
+
+    flashcards2 = [
+        ('What are the two main stages of photosynthesis and where do they occur?',
+         'Light-dependent reactions (thylakoid membrane) produce ATP and NADPH. The Calvin cycle (stroma) uses these to fix CO₂ into glucose.'),
+        ('What is the overall equation for photosynthesis?',
+         '$6CO_2 + 6H_2O \\xrightarrow{\\text{light}} C_6H_{12}O_6 + 6O_2$'),
+        ('What enzyme catalyses carbon fixation in the Calvin cycle?',
+         'RuBisCO (ribulose-1,5-bisphosphate carboxylase/oxygenase) — the most abundant enzyme on Earth.'),
+        ('What is the net ATP yield of glycolysis?',
+         '2 ATP (plus 2 NADH) per molecule of glucose; glucose is converted to 2 pyruvate.'),
+        ('What happens during the Krebs cycle?',
+         'Acetyl-CoA is oxidised in the mitochondrial matrix, generating CO₂, NADH, FADH₂, and 2 ATP per glucose.'),
+        ('How does the electron transport chain produce ATP?',
+         'NADH and FADH₂ donate electrons along the chain; released energy pumps protons across the inner membrane, and the resulting gradient drives ATP synthase (chemiosmosis).'),
+        ('What is the approximate total ATP yield from one glucose molecule?',
+         '~36–38 ATP: 2 from glycolysis, 2 from Krebs cycle, ~32–34 from oxidative phosphorylation via the ETC.'),
+        ('Why is oxygen the final electron acceptor in cellular respiration?',
+         'Oxygen has a very high electronegativity, making it an excellent electron acceptor; it combines with electrons and protons to form water, allowing the ETC to continue.'),
+        ('What are NADH and FADH₂?',
+         'Electron carriers (coenzymes) that collect high-energy electrons during glycolysis and the Krebs cycle and deliver them to the electron transport chain.'),
+    ]
+    for i, (front, back) in enumerate(flashcards2):
+        Flashcard.objects.create(lecture=lec2, front=front, back=back, order=i)
+
+    # Pre-seeded exam for the "Photosynthesis" topic with a score
+    TopicExam.objects.create(
+        course=bio,
+        tag='Photosynthesis',
+        lecture_snapshot=sorted([lec2.pk]),
+        last_score=7,
+        last_total=8,
+        attempts=1,
+        questions=[
+            {
+                'type': 'mcq',
+                'question': 'Where do the light-dependent reactions of photosynthesis take place?',
+                'options': ['Stroma', 'Thylakoid membrane', 'Mitochondrial matrix', 'Cytoplasm'],
+                'correct': 1,
+                'explanation': 'Light-dependent reactions occur in the thylakoid membrane, where chlorophyll captures light energy.',
+            },
+            {
+                'type': 'mcq',
+                'question': 'Which molecule is the primary CO₂ acceptor in the Calvin cycle?',
+                'options': ['ATP', 'NADPH', 'RuBP', 'G3P'],
+                'correct': 2,
+                'explanation': 'RuBP (ribulose-1,5-bisphosphate) is carboxylated by RuBisCO to begin each turn of the Calvin cycle.',
+            },
+            {
+                'type': 'mcq',
+                'question': 'What is released as a by-product of the light-dependent reactions?',
+                'options': ['Carbon dioxide', 'Glucose', 'Oxygen', 'NADPH'],
+                'correct': 2,
+                'explanation': 'Water is split (photolysis) during the light reactions, releasing O₂ as a by-product.',
+            },
+            {
+                'type': 'numeric',
+                'question': 'How many CO₂ molecules must be fixed to produce one net G3P molecule in the Calvin cycle?',
+                'answer': '3',
+                'explanation': 'Three turns of the Calvin cycle fix 3 CO₂, producing 6 G3P molecules, but 5 are recycled to regenerate RuBP — leaving 1 net G3P.',
+            },
+            {
+                'type': 'short_answer',
+                'question': 'Explain why increasing light intensity only improves the rate of photosynthesis up to a certain point.',
+                'model_answer': 'Beyond a saturation point, the light-independent (Calvin cycle) reactions become the limiting factor — there is more ATP and NADPH than the Calvin cycle enzymes can use. The rate then plateaus regardless of further increases in light intensity.',
+            },
+            {
+                'type': 'mcq',
+                'question': 'Which pigment is primarily responsible for capturing light energy in plants?',
+                'options': ['Carotenoid', 'Chlorophyll a', 'Xanthophyll', 'Phytochrome'],
+                'correct': 1,
+                'explanation': 'Chlorophyll a is the primary photosynthetic pigment; it absorbs red and blue light most strongly.',
+            },
+            {
+                'type': 'mcq',
+                'question': 'What is the direct energy source for the regeneration of RuBP in the Calvin cycle?',
+                'options': ['Glucose', 'FADH₂', 'ATP', 'NADH'],
+                'correct': 2,
+                'explanation': 'ATP (produced in the light reactions) provides the phosphate groups needed to regenerate RuBP from G3P.',
+            },
+            {
+                'type': 'short_answer',
+                'question': 'Describe how the structure of the chloroplast is adapted for photosynthesis.',
+                'model_answer': 'The thylakoid membrane provides a large surface area for light-harvesting complexes and the ETC. Thylakoids stack into grana, maximising membrane surface in a small volume. The stroma surrounds the thylakoids, providing the aqueous environment for the Calvin cycle enzymes.',
+            },
+        ],
+    )
+
+    # ── Course 2: Physics ─────────────────────────────────────────────────────
+    phys = Course.objects.create(
+        user=user,
+        name='Physics 101',
+        description='Classical mechanics — forces, motion, energy, and momentum.',
+        color='#6366f1',
+    )
+
+    lec3 = Lecture.objects.create(
+        course=phys,
+        title="Newton's Laws of Motion",
+        summary="A detailed walkthrough of Newton's three laws of motion, free-body diagrams, and applications to real-world force problems.",
+        transcript=(
+            "Today we cover Newton's three laws of motion, which are the foundation of classical mechanics. "
+            "The first law, the law of inertia, states that an object at rest stays at rest and an object in motion stays in motion "
+            "with the same speed and in the same direction unless acted upon by an unbalanced force. "
+            "The second law defines force quantitatively: F equals ma, where F is the net force in newtons, "
+            "m is the mass in kilograms, and a is the acceleration in metres per second squared. "
+            "The third law states that for every action there is an equal and opposite reaction — "
+            "when object A exerts a force on object B, object B exerts an equal and opposite force on object A. "
+            "Free-body diagrams are essential tools. You draw all forces acting on an object as vectors from the object's centre. "
+            "Common forces include weight (mg downward), normal force (perpendicular to surface), friction (opposing motion), and tension. "
+            "On an inclined plane the weight component parallel to the slope is mg sin theta and perpendicular is mg cos theta."
+        ),
+        notes=(
+            "## Key Takeaways\n\n"
+            "- Newton's three laws describe inertia, the force–acceleration relationship, and action–reaction pairs.\n"
+            "- Net force equals mass times acceleration: $F_{\\text{net}} = ma$.\n"
+            "- Free-body diagrams isolate an object and show all forces as labelled vectors.\n"
+            "- On inclined planes, weight is resolved into components parallel and perpendicular to the slope.\n"
+            "- Action–reaction forces act on *different* objects and never cancel each other.\n\n"
+            "## Newton's First Law — Inertia\n\n"
+            "- An object remains at rest or moves at constant velocity unless a **net force** acts on it.\n"
+            "- **Inertia** is the resistance of an object to a change in its state of motion; proportional to mass.\n"
+            "- A net force of zero does **not** mean no forces — it means all forces are balanced.\n\n"
+            "## Newton's Second Law — $F = ma$\n\n"
+            "$$F_{\\text{net}} = ma$$\n\n"
+            "- $F_{\\text{net}}$ = vector sum of all forces (N), $m$ = mass (kg), $a$ = acceleration (m s$^{-2}$).\n"
+            "- Doubling the force doubles the acceleration; doubling the mass halves the acceleration.\n"
+            "- Always apply separately to each axis: $\\sum F_x = ma_x$, $\\sum F_y = ma_y$.\n\n"
+            "## Newton's Third Law — Action–Reaction\n\n"
+            "- Forces always come in **equal and opposite pairs** acting on *different* objects.\n"
+            "- Example: you push the floor down; the floor pushes you up (the normal force).\n"
+            "- Action–reaction pairs do **not** cancel because they act on different objects.\n\n"
+            "## Free-Body Diagrams\n\n"
+            "- Draw a dot or box representing the object.\n"
+            "- Add arrows for every force: **weight** $W = mg$ (down), **normal force** $N$ (perpendicular to surface), **friction** $f$ (opposing motion), **tension** $T$ (along string).\n"
+            "- Label magnitude and direction; resolve into components before applying $F = ma$.\n\n"
+            "## Inclined Planes\n\n"
+            "- Tilt the coordinate axes to align with the slope.\n"
+            "- Weight components:\n"
+            "  - Parallel to slope: $mg\\sin\\theta$ (causes acceleration down the slope)\n"
+            "  - Perpendicular to slope: $mg\\cos\\theta$ (balanced by normal force $N = mg\\cos\\theta$)\n"
+        ),
+        tags=["Newton's Laws", 'Classical Mechanics', 'Free-Body Diagrams'],
+    )
+
+    flashcards3 = [
+        ("State Newton's First Law of Motion.",
+         "An object at rest remains at rest, and an object in motion continues at constant velocity, unless acted on by a net external force (the law of inertia)."),
+        ("State Newton's Second Law as an equation and define each term.",
+         "$F_{\\text{net}} = ma$ — net force (N) equals mass (kg) times acceleration (m s$^{-2}$). The acceleration is in the same direction as the net force."),
+        ("State Newton's Third Law of Motion.",
+         "For every action force, there is an equal and opposite reaction force acting on a different object. Forces always occur in action–reaction pairs."),
+        ("On an inclined plane at angle θ, what are the components of weight parallel and perpendicular to the slope?",
+         "Parallel (down the slope): $mg\\sin\\theta$. Perpendicular (into the slope): $mg\\cos\\theta$. The normal force $N = mg\\cos\\theta$ when the object is on a frictionless slope."),
+        ("Why do action–reaction force pairs not cancel each other out?",
+         "Because they act on *different* objects. Newton's second law applies to forces on a single object — forces from different objects cannot cancel."),
+        ("What is inertia and how is it measured?",
+         "Inertia is an object's resistance to changes in its state of motion. It is measured by mass — the greater the mass, the greater the inertia."),
+        ("A 5 kg box is pushed with a 20 N force on a frictionless surface. What is its acceleration?",
+         "$a = F/m = 20\\text{ N} / 5\\text{ kg} = 4\\text{ m s}^{-2}$"),
+        ("What four forces are commonly drawn on a free-body diagram for an object on a surface?",
+         "Weight ($mg$ downward), normal force ($N$, perpendicular to surface), friction ($f$, opposing motion), and any applied force or tension."),
+    ]
+    for i, (front, back) in enumerate(flashcards3):
+        Flashcard.objects.create(lecture=lec3, front=front, back=back, order=i)
+
+    lec4 = Lecture.objects.create(
+        course=phys,
+        title='Work, Energy, and Conservation Laws',
+        summary='Definitions of work, kinetic and potential energy, the work–energy theorem, and conservation of mechanical energy with application to frictionless systems.',
+        transcript=(
+            'In this lecture we look at energy — specifically work, kinetic energy, potential energy, and conservation. '
+            'Work is done when a force causes displacement. The formula is W = Fd cos theta, '
+            'where theta is the angle between the force vector and the displacement vector. '
+            'If the force is perpendicular to displacement, no work is done. '
+            'Kinetic energy is the energy of motion: KE = one half m v squared. '
+            'Gravitational potential energy is the energy stored by height: PE = mgh, '
+            'where g is 9.8 metres per second squared on Earth. '
+            'The work–energy theorem states that the net work done on an object equals its change in kinetic energy. '
+            'Conservation of mechanical energy says that in the absence of friction, '
+            'the total mechanical energy — kinetic plus potential — remains constant. '
+            'So you can set KE1 + PE1 equal to KE2 + PE2 to solve problems. '
+            'Power is the rate of doing work: P = W over t, measured in watts.'
+        ),
+        notes=(
+            '## Key Takeaways\n\n'
+            '- Work = force × displacement × cos θ; only the component of force along the displacement does work.\n'
+            '- Kinetic energy: $KE = \\frac{1}{2}mv^2$; gravitational PE: $U = mgh$.\n'
+            '- Work–energy theorem: net work = change in KE.\n'
+            '- Conservation of mechanical energy: $KE_1 + U_1 = KE_2 + U_2$ (no friction).\n'
+            '- Power is the rate of energy transfer: $P = W/t$ (watts).\n\n'
+            '## Work\n\n'
+            '$$W = Fd\\cos\\theta$$\n\n'
+            '- $F$ = applied force (N), $d$ = displacement (m), $\\theta$ = angle between force and displacement.\n'
+            '- Work is a **scalar** (no direction); can be positive, negative, or zero.\n'
+            '- Zero work examples: carrying a bag horizontally ($\\theta = 90°$), holding a weight still ($d = 0$).\n\n'
+            '## Kinetic Energy\n\n'
+            '$$KE = \\frac{1}{2}mv^2$$\n\n'
+            '- Always **non-negative**; increases with the square of speed.\n\n'
+            '## Gravitational Potential Energy\n\n'
+            '$$U_g = mgh$$\n\n'
+            '- $h$ is measured from an arbitrary reference height.\n'
+            '- As an object falls, $U_g$ decreases and $KE$ increases.\n\n'
+            '## Work–Energy Theorem\n\n'
+            '$$W_{\\text{net}} = \\Delta KE = KE_f - KE_i$$\n\n'
+            '- Net work done on an object equals its change in kinetic energy.\n'
+            '- A negative net work means the object slows down.\n\n'
+            '## Conservation of Mechanical Energy\n\n'
+            '$$KE_1 + U_1 = KE_2 + U_2$$\n\n'
+            '- Valid when only **conservative forces** (gravity, springs) do work — no friction or air resistance.\n'
+            '- Useful for finding speeds at different heights without knowing the path.\n\n'
+            '## Power\n\n'
+            '$$P = \\frac{W}{t} = Fv$$\n\n'
+            '- Measured in **watts** (W = J s$^{-1}$).\n'
+            '- Average power = total work ÷ total time.\n'
+        ),
+        tags=['Kinetic Energy', 'Potential Energy', 'Conservation of Energy', 'Work-Energy Theorem'],
+    )
+
+    flashcards4 = [
+        ('What is the formula for work and what does each symbol represent?',
+         '$W = Fd\\cos\\theta$ — $F$ is the applied force (N), $d$ is the displacement (m), and $\\theta$ is the angle between the force and displacement vectors.'),
+        ('Under what condition is zero work done by a force?',
+         'When the force is perpendicular to the displacement ($\\theta = 90°$, $\\cos 90° = 0$), or when there is no displacement ($d = 0$).'),
+        ('What is the formula for kinetic energy?',
+         '$KE = \\frac{1}{2}mv^2$ — where $m$ is mass (kg) and $v$ is speed (m s$^{-1}$).'),
+        ('State the work–energy theorem.',
+         'The net work done on an object equals its change in kinetic energy: $W_{\\text{net}} = \\Delta KE = KE_f - KE_i$.'),
+        ('What is gravitational potential energy and how is it calculated?',
+         'Energy stored due to an object\'s height above a reference level: $U_g = mgh$, where $g \\approx 9.8$ m s$^{-2}$.'),
+        ('State the law of conservation of mechanical energy.',
+         'In the absence of friction, total mechanical energy is constant: $KE_1 + U_1 = KE_2 + U_2$.'),
+        ('A 2 kg ball falls from a height of 5 m. What is its speed just before it hits the ground? (g = 10 m/s²)',
+         'Using conservation of energy: $mgh = \\frac{1}{2}mv^2$ → $v = \\sqrt{2gh} = \\sqrt{2 \\times 10 \\times 5} = 10$ m s$^{-1}$.'),
+        ('What is power and what are its SI units?',
+         'Power is the rate of doing work: $P = W/t = Fv$. SI unit is the **watt** (W = J s$^{-1}$).'),
+    ]
+    for i, (front, back) in enumerate(flashcards4):
+        Flashcard.objects.create(lecture=lec4, front=front, back=back, order=i)
+
+
 # ── Auth ──────────────────────────────────────────────────────────────────────
 
 @api_view(['POST'])
@@ -276,6 +645,7 @@ def register(request):
         return Response({'error': 'This username is already taken.'}, status=400)
 
     user = User.objects.create_user(email=email, username=username, password=password)
+    _seed_demo_data(user)
     return Response({'tokens': _user_tokens(user), 'user': _user_data(user)}, status=201)
 
 
