@@ -70,31 +70,37 @@ const coursesRoute = createRoute({
   component: CoursesPage,
 })
 
+function CourseDetailWrapper() {
+  const { courseId } = courseDetailRoute.useParams()
+  return <CourseDetailPage courseId={parseInt(courseId)} />
+}
+
 const courseDetailRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/courses/$courseId',
-  component: () => {
-    const { courseId } = courseDetailRoute.useParams()
-    return CourseDetailPage({ courseId: parseInt(courseId) })
-  },
+  component: CourseDetailWrapper,
 })
+
+function LectureWrapper() {
+  const { lectureId } = lectureRoute.useParams()
+  return <LecturePage lectureId={parseInt(lectureId)} />
+}
 
 const lectureRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/lectures/$lectureId',
-  component: () => {
-    const { lectureId } = lectureRoute.useParams()
-    return LecturePage({ lectureId: parseInt(lectureId) })
-  },
+  component: LectureWrapper,
 })
+
+function TopicWrapper() {
+  const { courseId, tag } = topicRoute.useParams()
+  return <TopicPage courseId={parseInt(courseId)} tag={tag} />
+}
 
 const topicRoute = createRoute({
   getParentRoute: () => authLayout,
   path: '/courses/$courseId/topics/$tag',
-  component: () => {
-    const { courseId, tag } = topicRoute.useParams()
-    return TopicPage({ courseId: parseInt(courseId), tag })
-  },
+  component: TopicWrapper,
 })
 
 export const routeTree = rootRoute.addChildren([
