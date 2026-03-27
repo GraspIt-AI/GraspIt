@@ -222,6 +222,7 @@ export default function HomePage() {
       <div className="max-w-2xl mx-auto px-5 sm:px-6">
         {/* Hero */}
         <section className="pt-14 pb-10">
+          <img src="/logo.png" alt="GraspIt" className="h-20 w-auto mb-6" />
           <p className="text-sm font-semibold text-indigo-500 tracking-wide mb-2">{greeting()}</p>
           <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 tracking-tight leading-tight mb-3">
             {user?.username ?? 'Welcome back'}.
