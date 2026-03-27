@@ -1,20 +1,54 @@
-# BrainJam — Compact Context
+# BrainJam / GraspIt — Compact Context
 
 > **Purpose:** Read this file after a context compaction to restore full project context without re-reading history. Keep it updated after every session.
 
 ---
 
-## What is BrainJam?
+## What is GraspIt?
 
 A lecture-to-study-materials web app built for a hackathon (deadline: **March 27, 2026 — midday presentation**). Students record or upload lecture audio, snap whiteboard photos, or attach context files (PDFs, slides). The app generates flashcards, notes, title, summary, and topic tags. Users organise saved lectures into courses, study by topic, and take AI-generated exams.
 
-**Repo:** https://github.com/Enrikkk/BrainJam (private)
+**App name:** GraspIt (renamed from BrainJam — `<title>` and branding updated)
+**Upstream repo:** https://github.com/Enrikkk/BrainJam (private)
+**Deployment repo:** https://github.com/Boisset-C/BrainJam (fork — Netlify + Railway deploy from here)
+**Live URL:** https://graspit.netlify.app
 
 ---
 
-## Environment
+## Deployment Architecture
 
-- **Working branch:** `agent-two` (branched from `fancy-features`, ahead of `main`)
+| Service | Platform | URL |
+|---|---|---|
+| Frontend (React/Vite) | Netlify | https://graspit.netlify.app |
+| Backend (Django) | Railway | https://brainjam-production.up.railway.app |
+
+**How they connect:** `frontend/.env.production` sets `VITE_API_URL=https://brainjam-production.up.railway.app` so the built frontend calls Railway directly (bypasses Netlify proxy which strips auth headers and has 10MB limit).
+
+**Railway config:**
+- Root directory: `backend`
+- Start command defined in `backend/railway.toml`: `cd brainjam && python manage.py migrate && gunicorn brainjam.wsgi:application --bind 0.0.0.0:$PORT`
+
+**Netlify config:** `netlify.toml` at repo root — base: `frontend`, command: `npm run build`, publish: `dist`. Also has `/api/*` proxy redirect to Railway (fallback, but `.env.production` takes priority).
+
+**Railway env vars required:**
+- `GROQ_API_KEY`
+- `GEMINI_API_KEY`
+- `SECRET_KEY`
+- `DEBUG=False`
+- `ALLOWED_HOSTS=brainjam-production.up.railway.app`
+- `CORS_ALLOWED_ORIGINS=https://graspit.netlify.app`
+
+**⚠️ SQLite wipes on every Railway redeploy** — re-register after each deploy before demoing.
+
+**Deploy workflow:**
+1. Push changes to `Enrikkk/BrainJam` (origin)
+2. Go to `github.com/Boisset-C/BrainJam` → **Sync fork → Update branch**
+3. Netlify auto-deploys; Railway auto-deploys
+
+---
+
+## Environment (local dev)
+
 - **Backend:** `cd backend && source venv/bin/activate && cd brainjam && python -u manage.py runserver`
 - **Frontend:** `cd frontend && CHOKIDAR_USEPOLLING=1 PATH="$HOME/.nvm/versions/node/v20.20.2/bin:$PATH" npm run dev` — runs on port 5175
 - **Build check:** `cd frontend && PATH="$HOME/.nvm/versions/node/v20.20.2/bin:$PATH" npm run build`
@@ -44,15 +78,13 @@ A lecture-to-study-materials web app built for a hackathon (deadline: **March 27
 |---|---|---|
 | `/login` | LoginPage | `routes/login.tsx` |
 | `/register` | RegisterPage | `routes/register.tsx` |
-| `/` | **HomePage** (new!) | `routes/home.tsx` |
+| `/` | HomePage (dashboard) | `routes/home.tsx` |
 | `/record` | RecordPage | `routes/index.tsx` |
 | `/results` | ResultsPage | `routes/results.tsx` |
 | `/courses` | CoursesPage | `routes/courses.tsx` |
 | `/courses/:courseId` | CourseDetailPage | `routes/course.tsx` |
 | `/courses/:courseId/topics/:tag` | TopicPage | `routes/topic.tsx` |
 | `/lectures/:lectureId` | LecturePage | `routes/lecture.tsx` |
-
-> **Key routing note:** RecordPage moved from `/` → `/record` in this session. The new `/` is the home dashboard.
 
 ---
 
@@ -70,7 +102,7 @@ GET    /api/search/?q=&course_id=   full-text search
 
 GET    /api/courses/                list courses
 POST   /api/courses/                create course
-GET    /api/courses/default/        find-or-create "Miscellaneous" catch-all course
+GET    /api/courses/default/        find-or-create "Miscellaneous" catch-all
 GET    /api/courses/:id/            course detail (includes lectures, exam_scores)
 PUT    /api/courses/:id/            update course
 DELETE /api/courses/:id/            delete course
@@ -81,7 +113,7 @@ GET    /api/courses/:id/topic/?tag= combined notes + flashcards for a tag
 GET    /api/courses/:id/anki/?tag=  export .apkg (tag optional)
 POST   /api/courses/:id/chat/       streaming AI chat (SSE)
 
-GET    /api/lectures/recent/        last 4 lectures with course info (NEW)
+GET    /api/lectures/recent/        last 4 lectures with course info
 POST   /api/lectures/               save lecture + flashcards
 GET    /api/lectures/:id/           lecture detail
 PATCH  /api/lectures/:id/           { transcript?, tags? }
@@ -92,127 +124,108 @@ GET    /api/lectures/:id/anki/      export .apkg
 
 ---
 
-## Design System (established this session)
-
-**The rule:** Every page uses the same Apple-inspired design language.
-
-- **Page background:** `bg-[#fafafa]`
-- **Sticky nav:** `sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 px-5 sm:px-6 h-14`
-  - Left: `← [Back label]` in `text-sm font-medium text-indigo-500 hover:text-indigo-700`
-  - Right: action buttons + `<UserMenu />`
-- **Content container:** `max-w-2xl mx-auto px-5 sm:px-6`
-- **Page hero:** `pt-10 pb-8` with `text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight`
-- **Section cards:** `bg-white border border-gray-100 rounded-2xl`
-- **Primary CTA:** `bg-gradient-to-r from-indigo-600 to-violet-600` with icon + chevron
-- **Tabs (inside cards):** `flex border-b border-gray-100 px-1 pt-1 gap-1` with active tab `text-indigo-700 bg-indigo-50`
-- **Secondary text:** `text-gray-400`
-- **Back/breadcrumb links:** `text-indigo-500 hover:text-indigo-700`
-- **NO** gradients on page backgrounds; **NO** `shadow-xl` floating cards; **NO** `rounded-3xl` main containers (only modals)
-
----
-
 ## Key Files
 
 ```
 BrainJam/
-├── CLAUDE.md                  ← full project context + session log
-├── compact_context.md         ← this file (quick context restore after compact)
-├── .env                       ← API keys (not committed)
-├── frontend/src/
-│   ├── routeTree.ts           ← all routes + auth guard
-│   ├── api.ts                 ← typed fetch wrappers
-│   ├── authStore.ts           ← localStorage auth (getAuthUser, getAccessToken, etc.)
-│   ├── store.ts               ← ephemeral results store (RecordPage → ResultsPage)
-│   ├── routes/
-│   │   ├── home.tsx           ← NEW: post-login dashboard
-│   │   ├── index.tsx          ← RecordPage (at /record)
-│   │   ├── results.tsx        ← results + save to course
-│   │   ├── courses.tsx        ← course list
-│   │   ├── course.tsx         ← course detail
-│   │   ├── lecture.tsx        ← lecture detail (tabs, transcript edit, tags)
-│   │   ├── topic.tsx          ← topic study + exam
-│   │   ├── login.tsx
-│   │   └── register.tsx
-│   └── components/
-│       ├── AudioRecorder.tsx
-│       ├── PhotoCapture.tsx
-│       ├── ContextFiles.tsx
-│       ├── FlashCard.tsx
-│       ├── NotesViewer.tsx
-│       ├── SearchModal.tsx    ← Cmd+K command palette
-│       ├── AuthLayoutWrapper.tsx ← mounts SearchModal + Cmd+K listener
-│       ├── UserMenu.tsx
-│       └── CourseChat.tsx     ← streaming AI chat panel
-└── backend/brainjam/api/
-    ├── views.py               ← all business logic
-    ├── urls.py                ← all URL patterns
-    ├── models.py              ← Course, Lecture, Flashcard, TopicExam
-    └── serializers.py
+├── CLAUDE.md                    ← full project context + session log
+├── compact_context.md           ← this file
+├── netlify.toml                 ← Netlify build config + /api/* proxy
+├── .env                         ← API keys (not committed)
+├── GraspIt_Presentation.pptx   ← hackathon slides (generated, not committed)
+├── frontend/
+│   ├── .env.production          ← VITE_API_URL=https://brainjam-production.up.railway.app
+│   ├── public/
+│   │   ├── logo.png             ← transparent background logo
+│   │   ├── favicon.ico
+│   │   ├── favicon-32x32.png
+│   │   └── favicon-16x16.png
+│   └── src/
+│       ├── routeTree.ts         ← all routes + auth guard
+│       ├── api.ts               ← typed fetch wrappers; API_BASE from VITE_API_URL
+│       ├── authStore.ts         ← localStorage auth
+│       ├── store.ts             ← ephemeral results store
+│       ├── routes/
+│       │   ├── home.tsx         ← post-login dashboard (logo, greeting, CTA, recent, courses)
+│       │   ├── index.tsx        ← RecordPage (at /record)
+│       │   ├── results.tsx
+│       │   ├── courses.tsx
+│       │   ├── course.tsx
+│       │   ├── lecture.tsx
+│       │   ├── topic.tsx
+│       │   ├── login.tsx
+│       │   └── register.tsx
+│       └── components/
+│           ├── AudioRecorder.tsx
+│           ├── PhotoCapture.tsx
+│           ├── ContextFiles.tsx
+│           ├── FlashCard.tsx
+│           ├── NotesViewer.tsx
+│           ├── SearchModal.tsx
+│           ├── AuthLayoutWrapper.tsx
+│           ├── UserMenu.tsx
+│           └── CourseChat.tsx
+└── backend/
+    ├── railway.toml             ← Railway start command
+    ├── requirements.txt
+    └── brainjam/
+        ├── Procfile             ← (legacy, railway.toml takes precedence)
+        ├── manage.py
+        └── api/
+            ├── views.py
+            ├── urls.py
+            ├── models.py
+            └── serializers.py
 ```
 
 ---
 
-## Everything Done in This Project (cumulative)
+## Design System
 
-### Session 1 (earlier — from previous compact)
-
-1. **Environment setup** — installed missing packages, migrated DB, fixed npm PATH
-2. **Gemini malformed JSON** — raised `max_output_tokens` 8192→65536; regex-based JSON extraction for thinking-model output
-3. **Audio optional** — `POST /api/process/` accepts photos/files alone; frontend enables Generate on any input
-4. **Hallucination guard** — Gemini prompted to return `{"insufficient_content": true}` for thin input; backend returns 422
-5. **Empty state fix** — results page distinguishes `state === null` vs empty flashcards
-6. **Auto-save to Miscellaneous** — results page saves to default course on unmount if user didn't manually save
-7. **Miscellaneous option in save panel** — "Miscellaneous (no course)" option in the save dropdown
-8. **`GET /api/courses/default/`** — find-or-create Miscellaneous course endpoint
-9. **QA guide** — full walkthrough guide created as a plan (covers all features end-to-end)
-
-### Session 2 (this session)
-
-10. **Home page** (`/`) — Apple-inspired post-login dashboard with time-aware greeting, gradient CTA, recent lectures, course list
-11. **RecordPage moved** to `/record`; all links updated
-12. **`GET /api/lectures/recent/`** — returns last 4 lectures with course name + color
-13. **Full design system redesign** — all 8 pages now share the Apple-inspired design:
-    - `bg-[#fafafa]` everywhere (no more gradients)
-    - Sticky frosted-glass nav on every page
-    - Flat `border border-gray-100` cards (no `shadow-xl`)
-    - Consistent back navigation + UserMenu in nav bar
-    - Vertical list layout for CoursesPage
-    - Section cards for RecordPage inputs
-    - Tab strip inside content card for Results/Lecture/Topic pages
-
----
-
-## Pending / Known State
-
-- **Uncommitted changes:** `CLAUDE.md`, `compact_context.md`, and all the frontend/backend files from both sessions are **not yet committed** to `agent-two` or pushed to `main`
-- **Branch:** currently on `agent-two`; to push to main: merge agent-two → main or cherry-pick
-- **No dark mode** — not implemented; decided to skip for hackathon
-- **Presentation tomorrow (March 27, 2026, midday)** — QA guide is in the plan file at `/home/codecomb/.claude/plans/idempotent-waddling-kahan.md`
+- **Page background:** `bg-[#fafafa]`
+- **Sticky nav:** `sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 h-14`
+- **Content container:** `max-w-2xl mx-auto px-5 sm:px-6`
+- **Section cards:** `bg-white border border-gray-100 rounded-2xl`
+- **Primary CTA:** `bg-gradient-to-r from-indigo-600 to-violet-600`
+- **NO** page background gradients; **NO** `shadow-xl`; **NO** `window.confirm()`
 
 ---
 
 ## Important Patterns & Gotchas
 
-- **TanStack Router v1** — no file-based routing; all routes manually declared in `routeTree.ts`; parameterised routes use wrapper components with `route.useParams()`
-- **Module-level store** — `store.ts` passes results from RecordPage → ResultsPage (not route state)
-- **Gemini is a thinking model** — `gemini-2.5-flash` sometimes wraps JSON in markdown or adds preamble; the `_run_gemini()` function in `views.py` handles this with regex extraction
-- **Audio MIME detection** — backend detects from `Content-Type` header first, then file extension
-- **`courses/default/` URL** — must be declared BEFORE `courses/<int:pk>/` in `urls.py`
-- **`lectures/recent/` URL** — must be declared BEFORE `lectures/<int:pk>/` in `urls.py`
-- **`lectures/` (POST)** — must be declared AFTER `lectures/recent/` (GET) in `urls.py`
-- **Python unbuffered output** — start backend with `python -u manage.py runserver`
-- **npm PATH** — `~/.nvm/versions/node/v20.20.2/bin/npm`; export PATH before using
-- **Frontend port** — 5175 (5173 and 5174 were occupied)
-- **JSONField tag queries** — use Python-level filter `[l for l in lectures if tag in (l.tags or [])]` not `filter(tags__contains=[tag])` (SQLite compatibility)
-- **Anki model ID** — fixed at `1607392319` to prevent duplicate model definitions on re-import
-- **Auto-save keepalive** — uses `fetch(..., { keepalive: true })` in ResultsPage unmount effect; needs `useRef` for `saved` state to avoid stale closure
+- **`VITE_API_URL`** — baked into build via `frontend/.env.production`; Netlify env var alone was not being picked up
+- **Netlify proxy strips Authorization header** — do NOT rely on Netlify proxy for authenticated requests; use `VITE_API_URL` direct calls
+- **Netlify proxy 10MB limit** — audio uploads must go directly to Railway, not through Netlify
+- **SQLite wipes on Railway redeploy** — re-register after every Railway deploy
+- **TanStack Router v1** — no file-based routing; all routes in `routeTree.ts`
+- **Module-level store** — `store.ts` passes results RecordPage → ResultsPage
+- **Gemini thinking model** — `gemini-2.5-flash` wraps JSON in markdown; `_run_gemini()` uses regex extraction
+- **`courses/default/`** — must be before `courses/<int:pk>/` in `urls.py`
+- **`lectures/recent/`** — must be before `lectures/<int:pk>/` in `urls.py`
+- **JSONField tag queries** — Python-level filter only (SQLite limitation)
+- **npm PATH** — `~/.nvm/versions/node/v20.20.2/bin`
+- **Frontend port (local)** — 5175
+
+---
+
+## Session 3 — Deployment Work (March 26-27, 2026)
+
+1. **Created `backend/brainjam/Procfile`** — Railway start command
+2. **Updated `netlify.toml`** — added `/api/*` proxy redirect to Railway
+3. **Created `frontend/.env.production`** — `VITE_API_URL` baked into build
+4. **Created `backend/railway.toml`** — persists start command, fixes Railpack detection
+5. **Logo transparent background** — BFS flood fill to remove studio background; saved to `frontend/public/logo.png`
+6. **Favicon generated** — `favicon.ico`, `favicon-32x32.png`, `favicon-16x16.png` in `frontend/public/`
+7. **Logo added to homepage hero** — `h-20` above greeting in `routes/home.tsx`
+8. **Hackathon slides** — `GraspIt_Presentation.pptx` generated (13 slides, dark indigo theme)
+9. **Deployment fork** — user's fork is `Boisset-C/BrainJam`; push to `Enrikkk/BrainJam` then sync fork
 
 ---
 
 ## How to Pick Up After Compact
 
-1. Read this file first (`compact_context.md`)
-2. Check `git status` to see uncommitted changes
-3. The QA guide is at `/home/codecomb/.claude/plans/idempotent-waddling-kahan.md`
-4. If running the app: start backend first, then frontend (commands above)
-5. Check `CLAUDE.md` for the full detailed session log if you need specifics
+1. Read this file first
+2. Run `git status` and `git log --oneline -5`
+3. If deploying: sync `Boisset-C/BrainJam` fork on GitHub → Netlify + Railway auto-deploy
+4. If running locally: start backend first, then frontend (commands above)
+5. After any Railway redeploy: clear `bj_*` from localStorage and re-register
