@@ -55,7 +55,16 @@ _SYSTEM_PROMPT = (
     '- Then use ## H2 section headers for each major topic.\n'
     '- Use bullet points under each header. Bold (**like this**) all key terms and important concepts.\n'
     '- The notes should be a complete, well-structured markdown document a student can study from.\n'
-    '- Do NOT invent or assume facts not present in the provided content.\n'
+    '- Do NOT invent or assume facts not present in the provided content.\n\n'
+    'MATH FORMATTING RULES (apply everywhere — flashcard fronts/backs, notes, all fields):\n'
+    '- Use LaTeX for ALL mathematical expressions, equations, and formulas — never plain text or backticks.\n'
+    '- Inline math: wrap with single dollar signs, e.g. $F = ma$ or $E = mc^2$.\n'
+    '- Display math (standalone equations): wrap with double dollar signs on their own line.\n'
+    '  Always put a blank line before AND after a $$ block, even inside a list item. Never place consecutive $$ blocks without a blank line between them.\n'
+    '- CRITICAL — JSON escaping: you are outputting a JSON string, so every LaTeX backslash MUST be doubled.\n'
+    '  Write \\\\frac, \\\\text, \\\\theta, \\\\vec, \\\\sum, \\\\int, \\\\Delta, \\\\tau, \\\\rho etc.\n'
+    '  Single backslash (\\text, \\frac) is WRONG inside JSON strings — it produces garbage characters.\n'
+    '- Never use backtick code spans for math. Never write equations as plain text like "F_net = sum(F)".\n'
 )
 
 
@@ -73,6 +82,12 @@ def _extract_json(raw: str):
     """
     raw = raw.strip()
     print(f'[GEMINI] raw response (first 500): {repr(raw[:500])}')
+
+    # Step 0: fix LaTeX backslashes that JSON silently misinterprets as control characters.
+    # Gemini often writes \text, \theta, \frac, \beta, \right etc. with a single backslash.
+    # JSON treats \t→TAB, \f→formfeed, \b→backspace, \r→carriage-return — all wrong for LaTeX.
+    # Use a negative lookbehind so already-correct \\text is left untouched.
+    raw = re.sub(r'(?<!\\)\\([tfbr])(?=[a-zA-Z{])', r'\\\\\1', raw)
 
     # Step 1: strip markdown fences — use the last match in case thinking text has fences too
     if '```' in raw:
@@ -111,6 +126,16 @@ def _extract_json(raw: str):
         except json.JSONDecodeError:
             pass
 
+        # Try to fix invalid LaTeX backslash sequences that are not valid JSON escapes.
+        # JSON only allows: \" \\ \/ \b \f \n \r \t \uXXXX
+        # LaTeX commands like \vec, \tau, \frac, \Delta produce invalid sequences like \v, \t, \f, \D.
+        try:
+            fixed = re.sub(r'\\([^"\\/bfnrtu\s])', r'\\\\\1', raw)
+            fixed = re.sub(r',(\s*[}\]])', r'\1', fixed)  # also strip trailing commas
+            return json.loads(fixed)
+        except json.JSONDecodeError:
+            pass
+
         # If all else fails, try to construct JSON from expected fields
         try:
             result = {}
@@ -118,10 +143,21 @@ def _extract_json(raw: str):
             fc_match = re.search(r'"flashcards"\s*:\s*\[(.*?)\](?:,|\})', raw, re.DOTALL)
             result['flashcards'] = json.loads('[' + (fc_match.group(1) if fc_match else '') + ']') if fc_match else []
 
-            # Extract other fields with regex fallback
+            # Extract other fields with regex — use pattern that handles escaped chars inside strings,
+            # then JSON-decode the captured value so \n → newline, \\vec → \vec, etc.
             for field in ['title', 'summary', 'notes', 'transcript']:
-                match = re.search(rf'"{field}"\s*:\s*"(.*?)"(?:,|\}})', raw, re.DOTALL)
-                result[field] = match.group(1) if match else ''
+                match = re.search(rf'"{field}"\s*:\s*"((?:[^"\\]|\\.)*)"', raw, re.DOTALL)
+                if match:
+                    try:
+                        result[field] = json.loads('"' + match.group(1) + '"')
+                    except json.JSONDecodeError:
+                        # Last resort: manually decode the most common escape sequences
+                        result[field] = (match.group(1)
+                            .replace('\\n', '\n').replace('\\t', '\t')
+                            .replace('\\r', '\r').replace('\\"', '"')
+                            .replace('\\\\', '\\'))
+                else:
+                    result[field] = ''
 
             # Extract tags array
             tags_match = re.search(r'"tags"\s*:\s*\[(.*?)\]', raw, re.DOTALL)
@@ -935,6 +971,9 @@ _EXAM_PROMPT = (
     '- Numeric explanations must show every step; short_answer model answers must be thorough.\n'
     '- Vary difficulty: roughly 30% easy, 50% medium, 20% hard.\n'
     '- All MCQ distractors should be plausible — common mistakes or close values, not obviously wrong.\n'
+    '- MATH FORMATTING: Use LaTeX for all equations — inline $...$ and display $$...$$. '
+    'CRITICAL: this is a JSON string, so every backslash must be doubled: \\\\frac, \\\\text, \\\\theta, \\\\vec, \\\\sum, \\\\int etc. '
+    'Single backslash (\\frac) inside a JSON string produces garbage — always use \\\\frac.\n'
 )
 
 
@@ -1107,7 +1146,10 @@ _CHAT_SYSTEM_PROMPT = (
     'You are a study assistant for this course. '
     'Answer questions based only on the course content provided. '
     'Be concise but thorough. Reference specific lecture titles when relevant. '
-    "If a topic isn't covered in the lectures, say so clearly."
+    "If a topic isn't covered in the lectures, say so clearly. "
+    'Format your responses in markdown. '
+    'For ALL mathematical expressions use LaTeX: inline $...$ and display $$...$$. '
+    'Backslashes in LaTeX commands do NOT need to be doubled here (e.g. write \\frac, \\theta, \\text normally).'
 )
 
 

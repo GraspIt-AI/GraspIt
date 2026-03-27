@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Md from './Md'
 
 interface Props {
   front: string
@@ -44,14 +45,14 @@ export default function FlashCard({ front, back, index, total, flipped: flippedP
             className="absolute inset-0 rounded-2xl bg-indigo-600 text-white flex items-center justify-center p-6 text-center font-medium text-base overflow-y-auto max-h-60"
             style={{ backfaceVisibility: 'hidden' }}
           >
-            {front}
+            <Md className="prose prose-sm prose-invert max-w-none [&_p]:my-0 [&_.katex]:text-white">{front}</Md>
           </div>
           {/* Back */}
           <div
             className="absolute inset-0 rounded-2xl bg-white border border-indigo-100 shadow-inner text-gray-800 flex items-center justify-center p-6 text-center overflow-y-auto max-h-60"
             style={{ backfaceVisibility: 'hidden', transform: 'rotateY(180deg)' }}
           >
-            {back}
+            <Md className="prose prose-sm max-w-none [&_p]:my-0">{back}</Md>
           </div>
         </div>
       </div>

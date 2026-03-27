@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import ReactMarkdown from 'react-markdown'
+import Md from './Md'
 import { streamCourseChat } from '../api'
 
 interface Message {
@@ -179,7 +179,7 @@ export default function CourseChat({ courseId, courseName, onClose }: Props) {
                       <span className="whitespace-pre-wrap">{msg.content}</span>
                     ) : (
                       <div className="prose prose-sm max-w-none prose-p:my-1 prose-ul:my-1 prose-ol:my-1 prose-li:my-0 prose-headings:my-1 prose-strong:font-semibold prose-p:leading-relaxed">
-                        <ReactMarkdown>{msg.content}</ReactMarkdown>
+                        <Md>{msg.content}</Md>
                       </div>
                     )
                   ) : (streaming && i === messages.length - 1 ? (

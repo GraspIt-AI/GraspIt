@@ -1,4 +1,4 @@
-import ReactMarkdown from 'react-markdown'
+import Md from './Md'
 
 interface Props {
   notes: string
@@ -7,7 +7,7 @@ interface Props {
 export default function NotesViewer({ notes }: Props) {
   return (
     <div className="prose prose-sm max-w-none text-gray-700">
-      <ReactMarkdown>{notes}</ReactMarkdown>
+      <Md>{notes}</Md>
     </div>
   )
 }
