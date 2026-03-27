@@ -228,20 +228,17 @@ def _scaling_instruction(transcript_words: int, context_words: int, image_count:
     """Return a dynamic scale hint to prepend to Gemini parts."""
     total = transcript_words + context_words + image_count * 400
     if total < 300:
-        fc = '10-15'
+        fc = '5-10'
         notes = 'concise notes: 3-5 bullet points per section'
     elif total < 800:
-        fc = '15-25'
-        notes = 'thorough notes: 5-8 bullet points per section'
+        fc = '10-15'
+        notes = 'concise notes: 4-6 bullet points per section'
     elif total < 2500:
-        fc = '25-40'
-        notes = 'detailed notes: 8-12 bullet points per section, cover every subtopic'
-    elif total < 6000:
-        fc = '40-60'
-        notes = 'comprehensive notes: cover every concept, formula, and example; 10-15 bullets per section'
+        fc = '15-20'
+        notes = 'thorough notes: 5-8 bullet points per section'
     else:
-        fc = '60-80'
-        notes = 'exhaustive notes: maximum depth — capture every concept, formula, derivation, and example; no important detail omitted'
+        fc = '20-25'
+        notes = 'thorough notes: 5-8 bullet points per section, one section per major topic'
     print(f'[SCALE] transcript_words={transcript_words}, context_words={context_words}, images={image_count}, total={total} → flashcards={fc}')
     return (
         f'[SCALE INSTRUCTION — Estimated input size: ~{total} words. '
