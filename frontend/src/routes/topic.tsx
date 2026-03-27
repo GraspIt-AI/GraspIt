@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api, downloadFile, type ExamQuestion } from '../api'
 import FlashCard from '../components/FlashCard'
 import NotesViewer from '../components/NotesViewer'
+import Md from '../components/Md'
 import { usePrintNotes } from '../usePrintNotes'
 import UserMenu from '../components/UserMenu'
 
@@ -55,15 +56,17 @@ function ExamFlow({ questions, onRetry, onComplete }: { questions: ExamQuestion[
               <div key={i} className={`rounded-xl px-4 py-3 border text-sm ${isCorrect ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
                 <div className="flex items-start gap-2">
                   <span className={`shrink-0 font-bold ${isCorrect ? 'text-green-600' : 'text-red-500'}`}>{isCorrect ? '✓' : '✗'}</span>
-                  <p className="text-gray-800 font-medium">{q.question}</p>
+                  <div className="prose prose-sm max-w-none text-gray-800 font-medium [&_p]:my-0">
+                    <Md>{q.question}</Md>
+                  </div>
                 </div>
                 {!isCorrect && (
-                  <p className="text-xs text-gray-400 mt-1.5 ml-5 line-clamp-3">
+                  <div className="text-xs text-gray-400 mt-1.5 ml-5">
                     {q.type === 'mcq'
-                      ? <>Correct: <span className="font-medium text-green-700">{q.options[q.correct]}</span></>
-                      : <>{q.type === 'numeric' ? 'Answer: ' : 'Model answer: '}<span className="font-medium text-green-700">{q.answer}</span></>
+                      ? <span>Correct: <span className="font-medium text-green-700 prose prose-sm [&_p]:inline [&_p]:my-0"><Md>{q.options[q.correct]}</Md></span></span>
+                      : <span>{q.type === 'numeric' ? 'Answer: ' : 'Model answer: '}<span className="font-medium text-green-700 prose prose-sm [&_p]:inline [&_p]:my-0"><Md>{q.answer}</Md></span></span>
                     }
-                  </p>
+                  </div>
                 )}
               </div>
             )
@@ -88,7 +91,9 @@ function ExamFlow({ questions, onRetry, onComplete }: { questions: ExamQuestion[
 
       {/* Question */}
       <div className="bg-[#fafafa] rounded-xl p-5">
-        <p className="text-base font-semibold text-gray-900 leading-snug">{q.question}</p>
+        <div className="prose prose-sm max-w-none text-gray-900 font-semibold [&_p]:my-0 [&_p]:leading-snug">
+          <Md>{q.question}</Md>
+        </div>
       </div>
 
       {/* MCQ */}
@@ -109,7 +114,9 @@ function ExamFlow({ questions, onRetry, onComplete }: { questions: ExamQuestion[
                 return (
                   <button key={i} onClick={() => { if (!answered) setMcqSelected(i) }} disabled={answered}
                     className={`text-left px-4 py-3 rounded-xl text-sm font-medium transition-all ${cls}`}>
-                    {opt}
+                    <div className="prose prose-sm max-w-none [&_p]:my-0 [&_p]:leading-snug pointer-events-none">
+                      <Md>{opt}</Md>
+                    </div>
                   </button>
                 )
               })}
@@ -117,7 +124,9 @@ function ExamFlow({ questions, onRetry, onComplete }: { questions: ExamQuestion[
             {answered && mcqSelected !== q.correct && (
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                 <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1.5">Explanation</p>
-                <p className="text-sm text-amber-900 leading-relaxed">{q.explanation}</p>
+                <div className="prose prose-sm max-w-none text-amber-900 [&_p]:my-0 [&_p]:leading-relaxed">
+                  <Md>{q.explanation}</Md>
+                </div>
               </div>
             )}
             {answered && mcqSelected === q.correct && (
@@ -161,7 +170,9 @@ function ExamFlow({ questions, onRetry, onComplete }: { questions: ExamQuestion[
               </div>
               <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
                 <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-1.5">Model answer</p>
-                <p className="text-sm text-indigo-900 leading-relaxed">{q.answer}</p>
+                <div className="prose prose-sm max-w-none text-indigo-900 [&_p]:my-0 [&_p]:leading-relaxed">
+                  <Md>{q.answer}</Md>
+                </div>
               </div>
               <div className="flex gap-3">
                 <button onClick={() => advance(false)} className="flex-1 py-3 rounded-xl border border-red-200 text-red-600 font-semibold hover:bg-red-50 transition-colors">✗ Got it wrong</button>
@@ -195,11 +206,15 @@ function ExamFlow({ questions, onRetry, onComplete }: { questions: ExamQuestion[
               </div>
               <div className="bg-green-50 border border-green-200 rounded-xl px-4 py-3">
                 <p className="text-xs text-green-600 font-semibold uppercase tracking-wide mb-1">Correct answer</p>
-                <p className="text-sm font-semibold text-green-800">{q.answer}</p>
+                <div className="prose prose-sm max-w-none text-green-800 font-semibold [&_p]:my-0">
+                  <Md>{q.answer}</Md>
+                </div>
               </div>
               <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
                 <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-1.5">Worked solution</p>
-                <p className="text-sm text-amber-900 leading-relaxed whitespace-pre-wrap">{q.explanation}</p>
+                <div className="prose prose-sm max-w-none text-amber-900 [&_p]:my-1 [&_p]:leading-relaxed">
+                  <Md>{q.explanation}</Md>
+                </div>
               </div>
               <div className="flex gap-3">
                 <button onClick={() => advance(false)} className="flex-1 py-3 rounded-xl border border-red-200 text-red-600 font-semibold hover:bg-red-50 transition-colors">✗ Got it wrong</button>

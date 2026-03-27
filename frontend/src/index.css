@@ -1,2 +1,10 @@
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
+
+/* Ensure KaTeX display math always renders as a block, even inside list items */
+.katex-display {
+  display: block !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0.4em 0;
+}

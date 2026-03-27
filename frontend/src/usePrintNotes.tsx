@@ -5,9 +5,17 @@ const PRINT_CSS = `
   @media print {
     body > * { display: none !important; }
     #bj-print-root { display: block !important; }
-    @page { margin: 0; }
+    @page {
+      margin: 0.85in 1in;
+      @bottom-center {
+        content: counter(page) " / " counter(pages);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-size: 9pt;
+        color: #9ca3af;
+      }
+    }
 
-    #bj-print-root { padding: 0.85in 1in; font-family: Georgia, 'Times New Roman', serif; font-size: 13pt; line-height: 1.7; color: #111; }
+    #bj-print-root { font-family: Georgia, 'Times New Roman', serif; font-size: 13pt; line-height: 1.7; color: #111; }
     #bj-print-root .doc-title { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 22pt; font-weight: 700; margin-bottom: 0.4in; padding-bottom: 10px; border-bottom: 2px solid #e5e7eb; }
     #bj-print-root h1, #bj-print-root h2, #bj-print-root h3, #bj-print-root h4 { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-weight: 700; margin-top: 1.3em; margin-bottom: 0.3em; page-break-after: avoid; }
     #bj-print-root h2 { font-size: 14pt; }
@@ -21,6 +29,8 @@ const PRINT_CSS = `
     #bj-print-root pre { background: #f3f4f6; padding: 12px 16px; border-radius: 6px; margin-bottom: 0.7em; }
     #bj-print-root pre code { background: none; padding: 0; }
     #bj-print-root blockquote { border-left: 3px solid #d1d5db; padding-left: 1em; color: #555; margin-bottom: 0.7em; }
+    .katex-mathml { display: none !important; }
+    .katex-display { display: block !important; margin: 0.6em 0; }
   }
 `
 
