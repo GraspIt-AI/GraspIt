@@ -154,7 +154,7 @@ def _run_gemini(parts):
             contents=parts,
             config=types.GenerateContentConfig(
                 system_instruction=_SYSTEM_PROMPT,
-                max_output_tokens=150000,
+                max_output_tokens=8192,
                 temperature=0.4,
             ),
         )
@@ -162,7 +162,7 @@ def _run_gemini(parts):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_generate)
         try:
-            response = future.result(timeout=60)
+            response = future.result(timeout=50)
         except concurrent.futures.TimeoutError:
             raise TimeoutError('Generation timed out.')
 
