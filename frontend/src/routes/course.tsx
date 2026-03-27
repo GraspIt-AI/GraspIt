@@ -178,7 +178,6 @@ function NewLectureFolderModal({ courseId, onClose }: { courseId: number; onClos
 
 export default function CourseDetailPage({ courseId }: Props) {
   const navigate = useNavigate()
-  const qc = useQueryClient()
   const [confirmDeleteCourse, setConfirmDeleteCourse] = useState(false)
   const [chatOpen, setChatOpen] = useState(false)
   const [showNewFolder, setShowNewFolder] = useState(false)

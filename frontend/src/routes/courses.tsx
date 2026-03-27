@@ -20,7 +20,6 @@ function timeAgo(iso: string) {
 }
 
 function NewCourseModal({ onClose }: { onClose: () => void }) {
-  const qc = useQueryClient()
   const navigate = useNavigate()
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
