@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate, Link } from '@tanstack/react-router'
 import AudioRecorder from '../components/AudioRecorder'
 import PhotoCapture from '../components/PhotoCapture'
@@ -167,10 +168,12 @@ export default function RecordPage() {
       setError(e instanceof Error ? e.message : 'Something went wrong')
     } finally {
       clearTimers()
-      setLoadingStep('idle')
-      setCurrentAudioIndex(0)
+      flushSync(() => {
+        setLoadingStep('idle')
+        setCurrentAudioIndex(0)
+      })
     }
-    if (shouldNavigate) setTimeout(() => navigate({ to: '/results' }), 0)
+    if (shouldNavigate) navigate({ to: '/results' })
   }
 
   function combineResults(results: Array<any>) {
