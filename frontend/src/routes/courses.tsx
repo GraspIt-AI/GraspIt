@@ -29,7 +29,6 @@ function NewCourseModal({ onClose }: { onClose: () => void }) {
   const create = useMutation({
     mutationFn: api.courses.create,
     onSuccess: (course) => {
-      qc.invalidateQueries({ queryKey: ['courses'] })
       navigate({ to: '/courses/$courseId', params: { courseId: String(course.id) } })
     },
   })

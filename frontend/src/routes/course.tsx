@@ -191,7 +191,7 @@ export default function CourseDetailPage({ courseId }: Props) {
 
   const del = useMutation({
     mutationFn: () => api.courses.delete(courseId),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['courses'] }); navigate({ to: '/courses' }) },
+    onSuccess: () => { navigate({ to: '/courses' }) },
   })
 
   if (isLoading) {
