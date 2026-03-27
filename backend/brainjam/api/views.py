@@ -95,22 +95,15 @@ def _extract_json(raw: str):
         if matches:
             raw = matches[-1].strip()
 
-    # Step 2: if still not starting with a JSON delimiter, grab the last {..} or [..]
+    # Step 2: if still not starting with a JSON delimiter, grab from the last { or [
+    # Thinking text always comes first, so the last { is the actual JSON response
     if not raw.startswith(('{', '[')):
-        # Find the last occurrence of a top-level JSON structure
-        obj_match = None
-        arr_match = None
-        for m in re.finditer(r'\{[\s\S]*\}', raw):
-            obj_match = m
-        for m in re.finditer(r'\[[\s\S]*\]', raw):
-            arr_match = m
-        # Pick whichever starts later in the string (closer to the real answer)
-        if obj_match and arr_match:
-            raw = (obj_match if obj_match.start() > arr_match.start() else arr_match).group(0)
-        elif obj_match:
-            raw = obj_match.group(0)
-        elif arr_match:
-            raw = arr_match.group(0)
+        last_obj = raw.rfind('{')
+        last_arr = raw.rfind('[')
+        if last_obj >= 0 and last_obj >= last_arr:
+            raw = raw[last_obj:]
+        elif last_arr >= 0:
+            raw = raw[last_arr:]
 
     # Step 3: Try to parse JSON
     try:
