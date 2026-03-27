@@ -170,7 +170,7 @@ export default function RecordPage() {
       setLoadingStep('idle')
       setCurrentAudioIndex(0)
     }
-    if (shouldNavigate) navigate({ to: '/results' })
+    if (shouldNavigate) setTimeout(() => navigate({ to: '/results' }), 0)
   }
 
   function combineResults(results: Array<any>) {
