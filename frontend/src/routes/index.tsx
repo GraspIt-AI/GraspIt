@@ -96,6 +96,7 @@ export default function RecordPage() {
 
     abortRef.current = new AbortController()
 
+    let shouldNavigate = false
     try {
       const token = getAccessToken()
       const allResults: Array<any> = []
@@ -160,7 +161,7 @@ export default function RecordPage() {
         setResults(combined)
       }
 
-      navigate({ to: '/results' })
+      shouldNavigate = true
     } catch (e: unknown) {
       if (e instanceof Error && e.name === 'AbortError') return
       setError(e instanceof Error ? e.message : 'Something went wrong')
@@ -169,6 +170,7 @@ export default function RecordPage() {
       setLoadingStep('idle')
       setCurrentAudioIndex(0)
     }
+    if (shouldNavigate) navigate({ to: '/results' })
   }
 
   function combineResults(results: Array<any>) {
