@@ -6,6 +6,7 @@ import ContextFiles from '../components/ContextFiles'
 import UserMenu from '../components/UserMenu'
 import { setResults } from '../store'
 import { getAccessToken } from '../authStore'
+import { API_BASE } from '../api'
 
 type LoadingStep = 'idle' | 'uploading' | 'transcribing' | 'generating'
 
@@ -114,7 +115,7 @@ export default function RecordPage() {
           contextFiles.forEach((f) => form.append('files', f))
         }
 
-        const res = await fetch('/api/process/', {
+        const res = await fetch(`${API_BASE}/api/process/`, {
           method: 'POST',
           body: form,
           signal: abortRef.current.signal,
@@ -136,7 +137,7 @@ export default function RecordPage() {
         photos.forEach((f) => form.append('images', f))
         contextFiles.forEach((f) => form.append('files', f))
 
-        const res = await fetch('/api/process/', {
+        const res = await fetch(`${API_BASE}/api/process/`, {
           method: 'POST',
           body: form,
           signal: abortRef.current.signal,
