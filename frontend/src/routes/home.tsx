@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate } from '@tanstack/react-router'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { api, type CourseListItem, type RecentLecture } from '../api'
 import UserMenu from '../components/UserMenu'
 import { getAuthUser } from '../authStore'
