@@ -162,6 +162,26 @@ export default function ResultsPage() {
     api.courses.default().then((c) => { defaultCourseIdRef.current = c.id }).catch(() => {})
   }, [])
 
+  const flashcardsForKey = state?.flashcards ?? []
+  const handleKey = useCallback((e: KeyboardEvent) => {
+    if (tab !== 'flashcards') return
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault()
+      setCardIndex((i) => { const next = Math.min(flashcardsForKey.length - 1, i + 1); if (next !== i) setCardFlipped(false); return next })
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      setCardIndex((i) => { const prev = Math.max(0, i - 1); if (prev !== i) setCardFlipped(false); return prev })
+    } else if (e.key === ' ' || e.key === 'Enter') {
+      e.preventDefault()
+      setCardFlipped((f) => !f)
+    }
+  }, [tab, flashcardsForKey.length, cardFlipped])
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKey)
+    return () => window.removeEventListener('keydown', handleKey)
+  }, [handleKey])
+
   useEffect(() => {
     return () => {
       if (savedRef.current || !state?.flashcards?.length || !defaultCourseIdRef.current) return
@@ -209,25 +229,6 @@ export default function ResultsPage() {
   const { flashcards, notes, transcript: rawTranscript, title = 'Your Lecture', summary = '', tags = [] } = state
   const transcript = editedTranscript ?? rawTranscript
   const { triggerPrint, printPortal } = usePrintNotes(title, notes)
-
-  const handleKey = useCallback((e: KeyboardEvent) => {
-    if (tab !== 'flashcards') return
-    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
-      e.preventDefault()
-      setCardIndex((i) => { const next = Math.min(flashcards.length - 1, i + 1); if (next !== i) setCardFlipped(false); return next })
-    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
-      e.preventDefault()
-      setCardIndex((i) => { const prev = Math.max(0, i - 1); if (prev !== i) setCardFlipped(false); return prev })
-    } else if (e.key === ' ' || e.key === 'Enter') {
-      e.preventDefault()
-      setCardFlipped(!cardFlipped)
-    }
-  }, [tab, flashcards.length, cardFlipped])
-
-  useEffect(() => {
-    window.addEventListener('keydown', handleKey)
-    return () => window.removeEventListener('keydown', handleKey)
-  }, [handleKey])
 
   function copyNotes() {
     navigator.clipboard.writeText(notes).then(() => {
