@@ -1,0 +1,2 @@
+[deploy]
+startCommand = "cd brainjam && python manage.py migrate && gunicorn brainjam.wsgi:application --bind 0.0.0.0:$PORT"
