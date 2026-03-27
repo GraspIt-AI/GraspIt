@@ -123,13 +123,14 @@ export default function RecordPage() {
           signal: abortRef.current.signal,
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
+        const text = await res.text()
         if (!res.ok) {
-          const text = await res.text()
           let msg: string
           try { msg = (JSON.parse(text) as { error?: string }).error ?? text } catch { msg = text }
           throw new Error(`HTTP ${res.status} from ${new URL(res.url).hostname}: ${msg.slice(0, 300)}`)
         }
-        const data = await res.json()
+        const data = JSON.parse(text) as { error?: string } & Record<string, unknown>
+        if (data.error) throw new Error(data.error)
         allResults.push({ ...data, _audioFile: filename })
       }
 
@@ -145,14 +146,15 @@ export default function RecordPage() {
           signal: abortRef.current.signal,
           headers: token ? { Authorization: `Bearer ${token}` } : {},
         })
+        const text = await res.text()
         if (!res.ok) {
-          const text = await res.text()
           let msg: string
           try { msg = (JSON.parse(text) as { error?: string }).error ?? text } catch { msg = text }
           throw new Error(`HTTP ${res.status} from ${new URL(res.url).hostname}: ${msg.slice(0, 300)}`)
         }
-        const data = await res.json()
-        setResults(data)
+        const data = JSON.parse(text) as { error?: string } & Record<string, unknown>
+        if (data.error) throw new Error(data.error)
+        setResults(data as unknown as Parameters<typeof setResults>[0])
       } else if (allResults.length === 1) {
         // Single audio file: just use the result as-is
         setResults(allResults[0])

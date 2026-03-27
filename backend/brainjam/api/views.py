@@ -3,6 +3,7 @@ import re
 import os
 import tempfile
 import concurrent.futures
+import threading
 from django.conf import settings
 from django.http import HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
@@ -191,7 +192,7 @@ def _run_gemini(parts):
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(_generate)
         try:
-            response = future.result(timeout=50)
+            response = future.result(timeout=180)
         except concurrent.futures.TimeoutError:
             raise TimeoutError('Generation timed out.')
 
@@ -530,27 +531,47 @@ def process(request):
     _scale_hint = _scaling_instruction(_transcript_words, _scale_context_words, _scale_image_count)
     parts = [_scale_hint] + parts
 
-    try:
-        result = _run_gemini(parts)
+    def _stream():
+        result_holder = [None]
+        error_holder = [None]
+        done = threading.Event()
+
+        def _worker():
+            try:
+                result_holder[0] = _run_gemini(parts)
+            except Exception as e:
+                error_holder[0] = e
+            finally:
+                done.set()
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+        # Yield keep-alive newlines every 3s so Railway's edge proxy doesn't time out
+        while not done.wait(timeout=3):
+            yield b'\n'
+
+        if error_holder[0]:
+            e = error_holder[0]
+            if isinstance(e, TimeoutError):
+                yield json.dumps({'error': 'Generation timed out. Please try again.'}).encode()
+            elif isinstance(e, json.JSONDecodeError):
+                yield json.dumps({'error': 'Gemini returned malformed JSON. Try again.'}).encode()
+            else:
+                print(f'[GEMINI ERROR] {e}')
+                yield json.dumps({'error': f'Generation failed: {str(e)}'}).encode()
+            return
+
+        result = result_holder[0]
         if result.get('insufficient_content'):
             reason = result.get('reason', 'Not enough content to generate study materials.')
-            return Response(
-                {'error': f'Not enough content to generate flashcards: {reason} Please add more audio, photos, or files.'},
-                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            )
-        print(f'[GEMINI] flashcards count: {len(result.get("flashcards", []))}')
-    except TimeoutError:
-        return Response({'error': 'Generation timed out. Please try again.'}, status=status.HTTP_504_GATEWAY_TIMEOUT)
-    except json.JSONDecodeError as e:
-        print(f'[GEMINI JSON ERROR] {e}')
-        return Response({'error': 'Gemini returned malformed JSON. Try again.'}, status=status.HTTP_502_BAD_GATEWAY)
-    except Exception as e:
-        print(f'[GEMINI ERROR] {e}')
-        return Response({'error': f'Generation failed: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
+            yield json.dumps({'error': f'Not enough content to generate flashcards: {reason} Please add more audio, photos, or files.'}).encode()
+            return
 
-    # Include transcript so the frontend can display it
-    result['transcript'] = transcript
-    return Response(result)
+        print(f'[GEMINI] flashcards count: {len(result.get("flashcards", []))}')
+        result['transcript'] = transcript
+        yield json.dumps(result).encode()
+
+    return StreamingHttpResponse(_stream(), content_type='application/json')
 
 
 # ── Folders ──────────────────────────────────────────────────────────────────
