@@ -193,6 +193,20 @@ export default function CourseDetailPage({ courseId }: Props) {
     onSuccess: () => { navigate({ to: '/courses' }) },
   })
 
+  // Must be before early returns — Rules of Hooks
+  const { folderLectureMap, unfolderedLectures } = useMemo(() => {
+    const folderLectureMap: Record<number, LectureListItem[]> = {}
+    const unfolderedLectures: LectureListItem[] = []
+    for (const l of course?.lectures ?? []) {
+      if (l.folder_id != null) {
+        folderLectureMap[l.folder_id] = [...(folderLectureMap[l.folder_id] ?? []), l]
+      } else {
+        unfolderedLectures.push(l)
+      }
+    }
+    return { folderLectureMap, unfolderedLectures }
+  }, [course?.lectures])
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#fafafa] flex items-center justify-center">
@@ -236,20 +250,6 @@ export default function CourseDetailPage({ courseId }: Props) {
     : null
   const weakTags = allTags.filter((tag) => { const pct = scorePct(tag); return pct != null && pct < 70 })
     .sort((a, b) => (scorePct(a) ?? 0) - (scorePct(b) ?? 0))
-
-  // Group lectures by folder
-  const { folderLectureMap, unfolderedLectures } = useMemo(() => {
-    const folderLectureMap: Record<number, LectureListItem[]> = {}
-    const unfolderedLectures: LectureListItem[] = []
-    for (const l of course.lectures) {
-      if (l.folder_id != null) {
-        folderLectureMap[l.folder_id] = [...(folderLectureMap[l.folder_id] ?? []), l]
-      } else {
-        unfolderedLectures.push(l)
-      }
-    }
-    return { folderLectureMap, unfolderedLectures }
-  }, [course.lectures])
 
   return (
     <>
