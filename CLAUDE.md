@@ -554,6 +554,91 @@ Exams are generated once per (course, tag) pair and cached in the DB. A `lecture
 
 ---
 
+## Session 3: Multi-Audio Support & Large File Handling (March 26, 2026)
+
+### Problem Statement
+- Users wanted to upload multiple lecture audio files in one go
+- Large context uploads (50MB+) + multiple audios caused "malformed JSON" errors from Gemini
+- Need to handle arbitrary amounts of user-uploaded content without data loss
+
+### Changes Made
+
+#### Frontend: AudioRecorder.tsx (Major Refactor)
+**New interface:**
+- `audioFiles: Array<{blob: Blob, filename: string}>` (controlled component from parent)
+- `onAdd(blob, filename)` — add audio item to list
+- `onRemove(index)` — remove audio item from list
+- **Record tab:** Records sequentially; on stop, adds to list (auto-numbered: `recording-1.webm`, `recording-2.webm`, etc.) and resets UI
+- **Upload tab:** File input with `multiple` support; each selected file triggers `onAdd`
+- **Audio files list:** Always visible below tabs; shows all added audio with remove buttons
+- **Tab switching:** Pause-on-switch behaviour preserved (if user records, switches to upload tab, the recording is paused, not lost)
+
+#### Frontend: ContextFiles.tsx (Minor Update)
+- Audio file extensions now accepted: `.mp3,.wav,.m4a,.ogg,.flac,.aac,.webm`
+- Added 🎵 icon for audio files
+- Updated hint text: "Supports PDF, DOCX, PPTX, TXT, audio files (MP3, WAV, etc), images — any course material"
+
+#### Frontend: RecordPage (index.tsx) (State & Processing Refactor)
+**State:**
+- `audioBlob: Blob | null` → `audioFiles: Array<{blob: Blob, filename: string}>`
+- `audioFilename` removed (now stored per-file in array)
+- Added `currentAudioIndex` to track progress during multi-file processing
+
+**Processing:** Smart request batching to handle large uploads
+- **First audio file:** Sent WITH all photos + all context files (comprehensive request)
+- **Subsequent audio files:** Sent WITH only photos (lightweight requests)
+- Rationale: Context files apply to the whole lecture; distributing them prevents any single request from becoming too large
+
+**Result combination function:**
+```ts
+function combineResults(results: Array<any>) {
+  // Concatenate transcripts with "Part 1 — filename.mp3" / "Part 2 — filename2.mp3" labels
+  // Merge flashcards (no dedup)
+  // Section notes with headers: ## Part 1 — filename / [notes] / --- / ## Part 2 — filename / [notes]
+  // Union tags (deduplicated)
+  // Join titles with ' · ' separator (e.g., "Neural Networks · Backpropagation")
+  // Combine summaries: "Part 1: {summary1} Part 2: {summary2}"
+}
+```
+
+**Loading UI:** Shows "Processing audio X of N…" when multiple files are being processed
+
+#### Backend: views.py (API Robustness)
+
+**1. Increased Gemini output token limit:**
+- `max_output_tokens: 65536` → `max_output_tokens: 150000`
+- Allows Gemini to output comprehensive results for large/complex inputs without truncation
+
+**2. Intelligent malformed JSON error recovery:**
+Enhanced `_extract_json()` with multiple fallback strategies:
+- **Primary:** Standard `json.loads()`
+- **Fallback 1:** Remove trailing commas (common Gemini artifact)
+- **Fallback 2:** Regex-based field extraction to reconstruct JSON from expected fields (title, summary, notes, flashcards, tags, transcript)
+- If all strategies fail, raises informative error with fallback attempt details
+
+Benefits: Even if Gemini returns incomplete or slightly malformed JSON, the backend recovers gracefully and extracts the key fields needed.
+
+### Testing Notes
+
+**Single audio file:**
+- Record or upload 1 audio → generate → works as before
+
+**Multiple audio files:**
+- Upload 2× 25MB lectures + 50MB+ context files → system now handles it:
+  - First request: 25MB audio + photos + 50MB context
+  - Second request: 25MB audio + photos (no context)
+  - Results combine with clear "Part 1" / "Part 2" boundaries
+
+**Error recovery:**
+- If Gemini returns malformed JSON, backend logs multiple fallback attempts and recovers by extracting expected fields
+
+### Known Limitations / Future Improvements
+- Context files are only sent with the first audio file (by design, to keep requests manageable)
+- No per-audio-file context file assignment (all context applies globally)
+- Results are combined at generation time; no post-hoc re-ordering of parts
+
+---
+
 ## Out of Scope
 
 - React Native mobile app (planned post-hackathon)

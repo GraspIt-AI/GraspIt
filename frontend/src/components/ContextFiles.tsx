@@ -6,11 +6,12 @@ interface Props {
   onRemove: (index: number) => void
 }
 
-const ACCEPTED = '.pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.csv,image/*'
+const ACCEPTED = '.pdf,.txt,.md,.doc,.docx,.ppt,.pptx,.csv,.mp3,.wav,.m4a,.ogg,.flac,.aac,.webm,image/*'
 
 function fileIcon(file: File) {
   const mime = file.type
   if (mime.startsWith('image/')) return '🖼️'
+  if (mime.startsWith('audio/')) return '🎵'
   if (mime === 'application/pdf') return '📄'
   if (mime.includes('word') || file.name.endsWith('.doc') || file.name.endsWith('.docx')) return '📝'
   if (mime.includes('presentation') || file.name.endsWith('.ppt') || file.name.endsWith('.pptx')) return '📊'
@@ -81,7 +82,7 @@ export default function ContextFiles({ files, onAdd, onRemove }: Props) {
 
       {files.length === 0 && (
         <p className="text-xs text-gray-400">
-          Supports PDF, DOCX, PPTX, TXT, images — any course material
+          Supports PDF, DOCX, PPTX, TXT, audio files (MP3, WAV, etc), images — any course material
         </p>
       )}
     </div>

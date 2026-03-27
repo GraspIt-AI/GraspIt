@@ -2,9 +2,26 @@ from django.conf import settings
 from django.db import models
 
 
+class CourseFolder(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='course_folders'
+    )
+    name = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class Course(models.Model):
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='courses'
+    )
+    folder = models.ForeignKey(
+        CourseFolder, null=True, blank=True, on_delete=models.SET_NULL, related_name='courses'
     )
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -19,8 +36,23 @@ class Course(models.Model):
         return self.name
 
 
+class LectureFolder(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='lecture_folders')
+    name = models.CharField(max_length=200)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class Lecture(models.Model):
     course = models.ForeignKey(Course, on_delete=models.CASCADE, related_name='lectures')
+    folder = models.ForeignKey(
+        LectureFolder, null=True, blank=True, on_delete=models.SET_NULL, related_name='lectures_in_folder'
+    )
     title = models.CharField(max_length=300)
     summary = models.TextField(blank=True)
     transcript = models.TextField(blank=True)

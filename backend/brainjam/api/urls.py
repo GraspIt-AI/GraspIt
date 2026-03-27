@@ -11,6 +11,11 @@ urlpatterns = [
     path('auth/me/', views.me, name='auth-me'),
     # Process
     path('process/', views.process, name='process'),
+    # Folders
+    path('course-folders/', views.course_folders, name='course-folders'),
+    path('course-folders/<int:pk>/', views.course_folder_detail, name='course-folder-detail'),
+    path('courses/<int:course_pk>/lecture-folders/', views.lecture_folders, name='lecture-folders'),
+    path('lecture-folders/<int:pk>/', views.lecture_folder_detail, name='lecture-folder-detail'),
     # Courses
     path('courses/', views.courses_list, name='courses-list'),
     path('courses/default/', views.default_course, name='default-course'),
@@ -29,4 +34,7 @@ urlpatterns = [
     path('lectures/', views.lectures_create, name='lectures-create'),
     path('lectures/<int:pk>/', views.lecture_detail, name='lecture-detail'),
     path('lectures/<int:pk>/regenerate/', views.lecture_regenerate, name='lecture-regenerate'),
+    path('lectures/<int:pk>/append/', views.lecture_append, name='lecture-append'),
+    path('lectures/<int:pk>/clear/', views.lecture_clear, name='lecture-clear'),
+    path('flashcards/<int:pk>/', views.flashcard_delete, name='flashcard-delete'),
 ]

@@ -61,7 +61,7 @@ function SavePanel({ onSaved, flashcards, notes, transcript, title, summary, tag
     (selectedCourseId !== null && selectedCourseId !== 'new') ||
     (selectedCourseId === 'new' && newCourseName.trim().length > 0)
 
-  const regularCourses = courses?.filter((c: CourseListItem) => c.name !== 'Miscellaneous') ?? []
+  const regularCourses = (courses?.courses ?? []).filter((c: CourseListItem) => c.name !== 'Miscellaneous')
 
   return (
     <div className="bg-white border border-gray-100 rounded-2xl p-5 flex flex-col gap-4">

@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 
 interface Props {
-  onRecordingComplete: (blob: Blob, filename: string) => void
-  onReset?: () => void
+  audioFiles: Array<{ blob: Blob; filename: string }>
+  onAdd: (blob: Blob, filename: string) => void
+  onRemove: (index: number) => void
 }
 
 const ACCEPTED_AUDIO = '.mp3,.wav,.m4a,.ogg,.flac,.aac,.webm,.mp4,.mpeg'
@@ -16,12 +17,12 @@ function formatSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-export default function AudioRecorder({ onRecordingComplete, onReset }: Props) {
+export default function AudioRecorder({ audioFiles, onAdd, onRemove }: Props) {
   const [mode, setMode] = useState<'record' | 'upload'>('record')
   const [recState, setRecState] = useState<'idle' | 'recording' | 'paused' | 'done' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const [seconds, setSeconds] = useState(0)
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const recordingCountRef = useRef(1)
 
   const mediaRecorder = useRef<MediaRecorder | null>(null)
   const chunks = useRef<Blob[]>([])
@@ -43,9 +44,11 @@ export default function AudioRecorder({ onRecordingComplete, onReset }: Props) {
       recorder.ondataavailable = (e) => chunks.current.push(e.data)
       recorder.onstop = () => {
         const blob = new Blob(chunks.current, { type: recorder.mimeType })
-        onRecordingComplete(blob, 'recording.webm')
+        onAdd(blob, `recording-${recordingCountRef.current}.webm`)
+        recordingCountRef.current++
         stream.getTracks().forEach((t) => t.stop())
-        setRecState('done')
+        setRecState('idle')
+        setSeconds(0)
       }
 
       recorder.start()
@@ -84,34 +87,29 @@ export default function AudioRecorder({ onRecordingComplete, onReset }: Props) {
     setRecState('idle')
     setSeconds(0)
     setErrorMsg('')
-    onReset?.()
   }
 
   // ── Upload mode ──────────────────────────────────────────────────────────────
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    setUploadedFile(file)
-    onRecordingComplete(file, file.name)
+    if (!e.target.files) return
+    Array.from(e.target.files).forEach((file) => {
+      onAdd(file, file.name)
+    })
     e.target.value = ''
-  }
-
-  function clearUpload() {
-    setUploadedFile(null)
-    onReset?.()
   }
 
   // ── Mode switch ──────────────────────────────────────────────────────────────
 
   function switchMode(m: 'record' | 'upload') {
+    if (m === mode) return
+    // If switching away from record while actively recording, pause (don't stop)
+    if (mode === 'record' && recState === 'recording') {
+      mediaRecorder.current?.pause()
+      if (timerRef.current) clearInterval(timerRef.current)
+      setRecState('paused')
+    }
     setMode(m)
-    // Reset both states when switching so parent blob is cleared cleanly
-    setRecState('idle')
-    setSeconds(0)
-    setErrorMsg('')
-    setUploadedFile(null)
-    onReset?.()
   }
 
   return (
@@ -231,44 +229,51 @@ export default function AudioRecorder({ onRecordingComplete, onReset }: Props) {
 
       {/* ── Upload mode ── */}
       {mode === 'upload' && (
-        <>
-          {!uploadedFile ? (
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="flex flex-col items-center gap-3 w-full max-w-xs px-6 py-8 rounded-2xl border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-400 hover:text-indigo-500 transition-colors"
-            >
-              <svg className="w-10 h-10" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-              </svg>
-              <div className="text-center">
-                <p className="text-sm font-medium">Click to upload audio</p>
-                <p className="text-xs mt-0.5">MP3, WAV, M4A, OGG, FLAC, AAC…</p>
-              </div>
-            </button>
-          ) : (
-            <div className="flex flex-col items-center gap-2 w-full max-w-xs">
-              <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center">
-                <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 11-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
-                </svg>
-              </div>
-              <p className="text-sm font-medium text-gray-800 text-center truncate max-w-full px-2">{uploadedFile.name}</p>
-              <p className="text-xs text-gray-400">{formatSize(uploadedFile.size)}</p>
-              <p className="text-xs text-gray-400">File saved — you can generate or change it</p>
-              <button onClick={clearUpload} className="text-sm text-gray-400 underline hover:text-gray-600">
-                Change file
-              </button>
-            </div>
-          )}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          className="flex flex-col items-center gap-3 w-full max-w-xs px-6 py-8 rounded-2xl border-2 border-dashed border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-400 hover:text-indigo-500 transition-colors"
+        >
+          <svg className="w-10 h-10" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+          </svg>
+          <div className="text-center">
+            <p className="text-sm font-medium">Click to upload audio</p>
+            <p className="text-xs mt-0.5">MP3, WAV, M4A, OGG, FLAC, AAC… (multiple files)</p>
+          </div>
+        </button>
+      )}
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept={ACCEPTED_AUDIO}
-            onChange={handleFileChange}
-            className="hidden"
-          />
-        </>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={ACCEPTED_AUDIO}
+        multiple
+        onChange={handleFileChange}
+        className="hidden"
+      />
+
+      {/* ── Audio files list (visible in both tabs) ── */}
+      {audioFiles.length > 0 && (
+        <div className="w-full border-t border-gray-200 pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-3">Added audio</p>
+          <div className="flex flex-col gap-2">
+            {audioFiles.map((item, i) => (
+              <div key={i} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-2 border border-gray-100">
+                <span className="text-lg shrink-0">🎵</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{item.filename}</p>
+                  <p className="text-xs text-gray-400">{formatSize(item.blob.size)}</p>
+                </div>
+                <button
+                  onClick={() => onRemove(i)}
+                  className="text-gray-300 hover:text-red-400 transition-colors shrink-0 text-lg leading-none"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

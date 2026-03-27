@@ -18,11 +18,11 @@ const STEP_LABELS: Record<Exclude<LoadingStep, 'idle'>, string> = {
 const STEPS: Exclude<LoadingStep, 'idle'>[] = ['uploading', 'transcribing', 'generating']
 
 export default function RecordPage() {
-  const [audioBlob, setAudioBlob] = useState<Blob | null>(null)
-  const [audioFilename, setAudioFilename] = useState<string>('recording.webm')
+  const [audioFiles, setAudioFiles] = useState<Array<{ blob: Blob; filename: string }>>([])
   const [photos, setPhotos] = useState<File[]>([])
   const [contextFiles, setContextFiles] = useState<File[]>([])
   const [loadingStep, setLoadingStep] = useState<LoadingStep>('idle')
+  const [currentAudioIndex, setCurrentAudioIndex] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [cancelled, setCancelled] = useState(false)
   const navigate = useNavigate()
@@ -30,7 +30,7 @@ export default function RecordPage() {
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([])
 
   const isLoading = loadingStep !== 'idle'
-  const hasAnyInput = !!(audioBlob || photos.length > 0 || contextFiles.length > 0)
+  const hasAnyInput = !!(audioFiles.length > 0 || photos.length > 0 || contextFiles.length > 0)
 
   function clearTimers() {
     timersRef.current.forEach(clearTimeout)
@@ -84,32 +84,71 @@ export default function RecordPage() {
     setCancelled(false)
     setLoadingStep('uploading')
 
-    // Time-based step progression (backend is a single synchronous call)
-    if (audioBlob) {
+    // Time-based step progression: adjust for multiple audio files
+    const hasAudio = audioFiles.length > 0
+    if (hasAudio) {
       timersRef.current.push(setTimeout(() => setLoadingStep('transcribing'), 2000))
       timersRef.current.push(setTimeout(() => setLoadingStep('generating'), 12000))
     } else {
       timersRef.current.push(setTimeout(() => setLoadingStep('generating'), 1000))
     }
 
-    const form = new FormData()
-    if (audioBlob) form.append('audio', audioBlob, audioFilename)
-    photos.forEach((f) => form.append('images', f))
-    contextFiles.forEach((f) => form.append('files', f))
-
     abortRef.current = new AbortController()
 
     try {
       const token = getAccessToken()
-      const res = await fetch('/api/process/', {
-        method: 'POST',
-        body: form,
-        signal: abortRef.current.signal,
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Unknown error')
-      setResults(data)
+      const allResults: Array<any> = []
+
+      // Process each audio file sequentially
+      // First audio gets all context; subsequent audios are lighter
+      for (let i = 0; i < audioFiles.length; i++) {
+        setCurrentAudioIndex(i + 1)
+        const { blob, filename } = audioFiles[i]
+        const isFirstAudio = i === 0
+
+        const form = new FormData()
+        form.append('audio', blob, filename)
+        photos.forEach((f) => form.append('images', f))
+        // Only send context files with the first audio file to keep requests manageable
+        if (isFirstAudio) {
+          contextFiles.forEach((f) => form.append('files', f))
+        }
+
+        const res = await fetch('/api/process/', {
+          method: 'POST',
+          body: form,
+          signal: abortRef.current.signal,
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? 'Unknown error')
+        allResults.push({ ...data, _audioFile: filename })
+      }
+
+      // If no audio files, process with just photos/context files
+      if (audioFiles.length === 0) {
+        const form = new FormData()
+        photos.forEach((f) => form.append('images', f))
+        contextFiles.forEach((f) => form.append('files', f))
+
+        const res = await fetch('/api/process/', {
+          method: 'POST',
+          body: form,
+          signal: abortRef.current.signal,
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        })
+        const data = await res.json()
+        if (!res.ok) throw new Error(data.error ?? 'Unknown error')
+        setResults(data)
+      } else if (allResults.length === 1) {
+        // Single audio file: just use the result as-is
+        setResults(allResults[0])
+      } else {
+        // Multiple audio files: combine results
+        const combined = combineResults(allResults)
+        setResults(combined)
+      }
+
       navigate({ to: '/results' })
     } catch (e: unknown) {
       if (e instanceof Error && e.name === 'AbortError') return
@@ -117,6 +156,28 @@ export default function RecordPage() {
     } finally {
       clearTimers()
       setLoadingStep('idle')
+      setCurrentAudioIndex(0)
+    }
+  }
+
+  function combineResults(results: Array<any>) {
+    // Combine multiple API results into a single result
+    const transcriptParts = results.map((r, i) => `Part ${i + 1} — ${r._audioFile}\n${r.transcript}`).join('\n\n')
+    const flashcards = results.flatMap((r) => r.flashcards || [])
+    const notesParts = results
+      .map((r, i) => `## Part ${i + 1} — ${r._audioFile}\n\n${r.notes}`)
+      .join('\n\n---\n\n')
+    const tags = [...new Set(results.flatMap((r) => r.tags || []))] // Union + deduplicate
+    const titles = results.map((r) => r.title).join(' · ')
+    const summaries = results.map((r, i) => `Part ${i + 1}: ${r.summary}`).join(' ')
+
+    return {
+      title: titles,
+      summary: summaries,
+      transcript: transcriptParts,
+      flashcards,
+      notes: notesParts,
+      tags,
     }
   }
 
@@ -143,18 +204,15 @@ export default function RecordPage() {
           {/* Audio */}
           <div className="bg-white border border-gray-100 rounded-2xl p-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 mb-4">
-              Audio — optional
+              Audio — optional (record, upload, or both)
             </p>
             <AudioRecorder
-              onRecordingComplete={(blob, filename) => {
-                setAudioBlob(blob)
-                setAudioFilename(filename)
+              audioFiles={audioFiles}
+              onAdd={(blob, filename) => {
+                setAudioFiles((prev) => [...prev, { blob, filename }])
                 setError(null)
               }}
-              onReset={() => {
-                setAudioBlob(null)
-                setError(null)
-              }}
+              onRemove={(i) => setAudioFiles((prev) => prev.filter((_, idx) => idx !== i))}
             />
           </div>
 
@@ -179,7 +237,7 @@ export default function RecordPage() {
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 rounded-2xl px-5 py-4 text-sm flex flex-col gap-1">
                 <span className="font-medium">{error}</span>
-                {audioBlob && (
+                {audioFiles.length > 0 && (
                   <span className="text-red-500 text-xs">Your audio is preserved — just try again.</span>
                 )}
               </div>
@@ -193,36 +251,43 @@ export default function RecordPage() {
 
             {/* Loading step indicator */}
             {isLoading && (
-              <div className="bg-white border border-gray-100 rounded-2xl px-5 py-4 flex items-center justify-between gap-2">
-                {STEPS.map((step, i) => {
-                  const stepIndex = STEPS.indexOf(loadingStep as Exclude<LoadingStep, 'idle'>)
-                  const isDone = i < stepIndex
-                  const isActive = i === stepIndex
-                  return (
-                    <div key={step} className="flex-1 flex flex-col items-center gap-1.5">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                        isDone ? 'bg-green-500 text-white' :
-                        isActive ? 'bg-indigo-600 text-white animate-pulse' :
-                        'bg-gray-100 text-gray-400'
-                      }`}>
-                        {isDone ? (
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        ) : (
-                          i + 1
-                        )}
+              <div className="bg-white border border-gray-100 rounded-2xl px-5 py-4 flex flex-col gap-3">
+                {audioFiles.length > 1 && (
+                  <p className="text-xs text-gray-500 text-center">
+                    Processing audio {currentAudioIndex} of {audioFiles.length}…
+                  </p>
+                )}
+                <div className="flex items-center justify-between gap-2">
+                  {STEPS.map((step, i) => {
+                    const stepIndex = STEPS.indexOf(loadingStep as Exclude<LoadingStep, 'idle'>)
+                    const isDone = i < stepIndex
+                    const isActive = i === stepIndex
+                    return (
+                      <div key={step} className="flex-1 flex flex-col items-center gap-1.5">
+                        <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                          isDone ? 'bg-green-500 text-white' :
+                          isActive ? 'bg-indigo-600 text-white animate-pulse' :
+                          'bg-gray-100 text-gray-400'
+                        }`}>
+                          {isDone ? (
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={3} viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            i + 1
+                          )}
+                        </div>
+                        <span className={`text-[10px] text-center leading-tight font-medium ${
+                          isActive ? 'text-indigo-600' :
+                          isDone ? 'text-green-600' :
+                          'text-gray-400'
+                        }`}>
+                          {STEP_LABELS[step]}
+                        </span>
                       </div>
-                      <span className={`text-[10px] text-center leading-tight font-medium ${
-                        isActive ? 'text-indigo-600' :
-                        isDone ? 'text-green-600' :
-                        'text-gray-400'
-                      }`}>
-                        {STEP_LABELS[step]}
-                      </span>
-                    </div>
-                  )
-                })}
+                    )
+                  })}
+                </div>
               </div>
             )}
 

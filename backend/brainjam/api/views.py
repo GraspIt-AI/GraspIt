@@ -17,9 +17,10 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from openai import OpenAI
 from google import genai
 from google.genai import types
-from .models import Course, Lecture, Flashcard, TopicExam
+from .models import Course, CourseFolder, Lecture, LectureFolder, Flashcard, TopicExam
 from .serializers import (
     CourseListSerializer, CourseDetailSerializer,
+    CourseFolderSerializer, LectureFolderSerializer,
     LectureDetailSerializer,
 )
 from PIL import Image
@@ -60,14 +61,15 @@ _SYSTEM_PROMPT = (
 
 def _extract_json(raw: str):
     """
-    Robustly extract and parse JSON from Gemini output.
+    Robustly extract and parse JSON from Gemini output, with intelligent fallbacks.
 
     gemini-2.5-flash is a thinking model — it can prefix its answer with
     reasoning text that itself contains '{' or '[' characters. Strategy:
       1. If markdown fences are present, extract the content inside the LAST fence block.
       2. If the text still doesn't start with '{' or '[', find the LAST '{...}' or '[...]'
          block (last, not first, because thinking text comes before the answer).
-      3. Parse and return.
+      3. Try to parse JSON. If it fails, attempt to fix common issues (trailing commas, etc.)
+      4. If still failing, try extracting just the JSON fields we care about.
     """
     raw = raw.strip()
     print(f'[GEMINI] raw response (first 500): {repr(raw[:500])}')
@@ -95,7 +97,51 @@ def _extract_json(raw: str):
         elif arr_match:
             raw = arr_match.group(0)
 
-    return json.loads(raw)
+    # Step 3: Try to parse JSON
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as e:
+        print(f'[GEMINI] JSON parse error: {e}. Attempting fallback fixes...')
+
+        # Try to fix common issues: trailing commas, missing quotes, etc.
+        try:
+            # Remove trailing commas before } or ]
+            fixed = re.sub(r',(\s*[}\]])', r'\1', raw)
+            return json.loads(fixed)
+        except json.JSONDecodeError:
+            pass
+
+        # If all else fails, try to construct JSON from expected fields
+        try:
+            result = {}
+            # Try to extract flashcards array
+            fc_match = re.search(r'"flashcards"\s*:\s*\[(.*?)\](?:,|\})', raw, re.DOTALL)
+            result['flashcards'] = json.loads('[' + (fc_match.group(1) if fc_match else '') + ']') if fc_match else []
+
+            # Extract other fields with regex fallback
+            for field in ['title', 'summary', 'notes', 'transcript']:
+                match = re.search(rf'"{field}"\s*:\s*"(.*?)"(?:,|\}})', raw, re.DOTALL)
+                result[field] = match.group(1) if match else ''
+
+            # Extract tags array
+            tags_match = re.search(r'"tags"\s*:\s*\[(.*?)\]', raw, re.DOTALL)
+            if tags_match:
+                tags_str = '[' + tags_match.group(1) + ']'
+                try:
+                    result['tags'] = json.loads(tags_str)
+                except:
+                    result['tags'] = []
+            else:
+                result['tags'] = []
+
+            print(f'[GEMINI] Fallback extraction succeeded')
+            return result
+        except Exception as fallback_e:
+            print(f'[GEMINI] All fallbacks failed: {fallback_e}')
+            raise json.JSONDecodeError(
+                f'Could not parse Gemini response as JSON (original: {e})',
+                raw, 0
+            )
 
 
 def _run_gemini(parts):
@@ -108,7 +154,7 @@ def _run_gemini(parts):
             contents=parts,
             config=types.GenerateContentConfig(
                 system_instruction=_SYSTEM_PROMPT,
-                max_output_tokens=65536,
+                max_output_tokens=150000,
                 temperature=0.4,
             ),
         )
@@ -121,6 +167,58 @@ def _run_gemini(parts):
             raise TimeoutError('Generation timed out.')
 
     return _extract_json(response.text)
+
+
+def _convert_to_pdf(file_bytes: bytes, filename: str) -> bytes | None:
+    """Convert a document (PPTX, DOCX, etc.) to PDF using LibreOffice headless.
+    Returns PDF bytes on success, None on failure."""
+    import subprocess, tempfile, pathlib
+    suffix = pathlib.Path(filename).suffix.lower() or '.tmp'
+    with tempfile.TemporaryDirectory() as tmp:
+        src = pathlib.Path(tmp) / f'input{suffix}'
+        src.write_bytes(file_bytes)
+        try:
+            result = subprocess.run(
+                ['libreoffice', '--headless', '--convert-to', 'pdf', '--outdir', tmp, str(src)],
+                capture_output=True, timeout=30,
+            )
+            if result.returncode != 0:
+                print(f'[LIBREOFFICE] conversion failed: {result.stderr.decode(errors="replace")}')
+                return None
+            pdf_path = src.with_suffix('.pdf')
+            if not pdf_path.exists():
+                print(f'[LIBREOFFICE] output PDF not found at {pdf_path}')
+                return None
+            return pdf_path.read_bytes()
+        except Exception as e:
+            print(f'[LIBREOFFICE] error: {e}')
+            return None
+
+
+def _scaling_instruction(transcript_words: int, context_words: int, image_count: int) -> str:
+    """Return a dynamic scale hint to prepend to Gemini parts."""
+    total = transcript_words + context_words + image_count * 400
+    if total < 300:
+        fc = '10-15'
+        notes = 'concise notes: 3-5 bullet points per section'
+    elif total < 800:
+        fc = '15-25'
+        notes = 'thorough notes: 5-8 bullet points per section'
+    elif total < 2500:
+        fc = '25-40'
+        notes = 'detailed notes: 8-12 bullet points per section, cover every subtopic'
+    elif total < 6000:
+        fc = '40-60'
+        notes = 'comprehensive notes: cover every concept, formula, and example; 10-15 bullets per section'
+    else:
+        fc = '60-80'
+        notes = 'exhaustive notes: maximum depth — capture every concept, formula, derivation, and example; no important detail omitted'
+    print(f'[SCALE] transcript_words={transcript_words}, context_words={context_words}, images={image_count}, total={total} → flashcards={fc}')
+    return (
+        f'[SCALE INSTRUCTION — Estimated input size: ~{total} words. '
+        f'FLASHCARDS: Generate {fc} flashcards to match this volume. '
+        f'NOTES: Write {notes}. Scale depth proportionally to the input — more content = more output.]'
+    )
 
 
 def _user_tokens(user):
@@ -254,6 +352,9 @@ def process(request):
     else:
         parts: list = ['No audio transcript is available. Generate flashcards, notes, title, summary, and tags based solely on the provided images and context files.']
 
+    _scale_image_count = len(image_files)
+    _scale_context_words = 0
+
     for img in image_files:
         img_bytes = img.read()
         pil_img = Image.open(io.BytesIO(img_bytes))
@@ -273,10 +374,27 @@ def process(request):
             if mime_type.startswith('image/') or name_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.heif')):
                 pil_img = Image.open(io.BytesIO(cf_bytes))
                 parts.append(pil_img)
+                _scale_image_count += 1
 
             # ── PDF: pass as inline bytes (Gemini natively supports PDFs) ─────
             elif mime_type == 'application/pdf' or name_lower.endswith('.pdf'):
                 parts.append(types.Part.from_bytes(data=cf_bytes, mime_type='application/pdf'))
+
+            # ── Audio: pass directly to Gemini (supports audio natively) ────────
+            elif (
+                mime_type.startswith('audio/')
+                or name_lower.endswith(('.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac', '.webm', '.mp4', '.mpeg'))
+            ):
+                _AUDIO_MIME_MAP = {
+                    '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4',
+                    '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.aac': 'audio/aac',
+                    '.webm': 'audio/webm', '.mp4': 'audio/mp4', '.mpeg': 'audio/mpeg',
+                }
+                ext = '.' + name_lower.rsplit('.', 1)[-1] if '.' in name_lower else ''
+                resolved_mime = mime_type if mime_type.startswith('audio/') else _AUDIO_MIME_MAP.get(ext, 'audio/mpeg')
+                parts.append(types.Part.from_bytes(data=cf_bytes, mime_type=resolved_mime))
+                _scale_context_words += len(cf_bytes) // 150  # rough word estimate from audio size
+                print(f'[CONTEXT FILE] Audio file {cf.name} passed to Gemini as {resolved_mime}')
 
             # ── Plain text / CSV / JSON / Markdown / code ─────────────────────
             elif (
@@ -286,8 +404,9 @@ def process(request):
             ):
                 text_content = cf_bytes.decode('utf-8', errors='replace')
                 parts.append(f'Context document "{cf.name}":\n\n{text_content}')
+                _scale_context_words += len(text_content.split())
 
-            # ── PowerPoint (PPTX / PPT) ───────────────────────────────────────
+            # ── PowerPoint (PPTX / PPT) — convert to PDF for full visual fidelity ─
             elif (
                 mime_type in (
                     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -295,21 +414,29 @@ def process(request):
                 )
                 or name_lower.endswith(('.pptx', '.ppt'))
             ):
-                from pptx import Presentation
-                prs = Presentation(io.BytesIO(cf_bytes))
-                slides_text = []
-                for i, slide in enumerate(prs.slides, 1):
-                    slide_parts = []
-                    for shape in slide.shapes:
-                        if hasattr(shape, 'text') and shape.text.strip():
-                            slide_parts.append(shape.text.strip())
-                    if slide_parts:
-                        slides_text.append(f'[Slide {i}]\n' + '\n'.join(slide_parts))
-                extracted = '\n\n'.join(slides_text) if slides_text else '(no readable text found in slides)'
-                parts.append(f'Context slides "{cf.name}" ({len(prs.slides)} slides):\n\n{extracted}')
-                print(f'[CONTEXT FILE] Extracted {len(prs.slides)} slides, {len(extracted)} chars from {cf.name}')
+                pdf_bytes = _convert_to_pdf(cf_bytes, cf.name)
+                if pdf_bytes:
+                    parts.append(types.Part.from_bytes(data=pdf_bytes, mime_type='application/pdf'))
+                    _scale_context_words += len(cf_bytes) // 5  # rough word estimate from file size
+                    print(f'[CONTEXT FILE] Converted {cf.name} to PDF ({len(pdf_bytes)} bytes) for Gemini')
+                else:
+                    # Fallback: extract text with python-pptx
+                    from pptx import Presentation
+                    prs = Presentation(io.BytesIO(cf_bytes))
+                    slides_text = []
+                    for i, slide in enumerate(prs.slides, 1):
+                        slide_parts = []
+                        for shape in slide.shapes:
+                            if hasattr(shape, 'text') and shape.text.strip():
+                                slide_parts.append(shape.text.strip())
+                        if slide_parts:
+                            slides_text.append(f'[Slide {i}]\n' + '\n'.join(slide_parts))
+                    extracted = '\n\n'.join(slides_text) if slides_text else '(no readable text found in slides)'
+                    parts.append(f'Context slides "{cf.name}" ({len(prs.slides)} slides):\n\n{extracted}')
+                    _scale_context_words += len(extracted.split())
+                    print(f'[CONTEXT FILE] PDF conversion failed, extracted text from {len(prs.slides)} slides')
 
-            # ── Word (DOCX / DOC) ─────────────────────────────────────────────
+            # ── Word (DOCX / DOC) — convert to PDF for full fidelity ────────────
             elif (
                 mime_type in (
                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -317,12 +444,20 @@ def process(request):
                 )
                 or name_lower.endswith(('.docx', '.doc'))
             ):
-                from docx import Document
-                doc = Document(io.BytesIO(cf_bytes))
-                paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-                extracted = '\n\n'.join(paragraphs) if paragraphs else '(no readable text found in document)'
-                parts.append(f'Context document "{cf.name}":\n\n{extracted}')
-                print(f'[CONTEXT FILE] Extracted {len(paragraphs)} paragraphs from {cf.name}')
+                pdf_bytes = _convert_to_pdf(cf_bytes, cf.name)
+                if pdf_bytes:
+                    parts.append(types.Part.from_bytes(data=pdf_bytes, mime_type='application/pdf'))
+                    _scale_context_words += len(cf_bytes) // 5
+                    print(f'[CONTEXT FILE] Converted {cf.name} to PDF ({len(pdf_bytes)} bytes) for Gemini')
+                else:
+                    # Fallback: extract text with python-docx
+                    from docx import Document
+                    doc = Document(io.BytesIO(cf_bytes))
+                    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
+                    extracted = '\n\n'.join(paragraphs) if paragraphs else '(no readable text found in document)'
+                    parts.append(f'Context document "{cf.name}":\n\n{extracted}')
+                    _scale_context_words += len(extracted.split())
+                    print(f'[CONTEXT FILE] PDF conversion failed, extracted {len(paragraphs)} paragraphs from {cf.name}')
 
             # ── Excel (XLSX / XLS) ────────────────────────────────────────────
             elif (
@@ -346,12 +481,14 @@ def process(request):
                         sheets_text.append(f'[Sheet: {sheet_name}]\n' + '\n'.join(rows))
                 extracted = '\n\n'.join(sheets_text) if sheets_text else '(no readable data found)'
                 parts.append(f'Context spreadsheet "{cf.name}":\n\n{extracted}')
+                _scale_context_words += len(extracted.split())
 
             # ── Fallback: try UTF-8 decode, then skip ─────────────────────────
             else:
                 try:
                     text_content = cf_bytes.decode('utf-8', errors='strict')
                     parts.append(f'Context document "{cf.name}":\n\n{text_content}')
+                    _scale_context_words += len(text_content.split())
                     print(f'[CONTEXT FILE] Decoded {cf.name} as UTF-8 fallback')
                 except UnicodeDecodeError:
                     print(f'[CONTEXT FILE] Skipping unsupported binary file: {cf.name} ({mime_type})')
@@ -363,6 +500,10 @@ def process(request):
         parts.append('The documents above are context materials provided by the student (lecture slides, notes, PDFs). Use them as primary reference material alongside the transcript.')
 
     # 3. Generate flashcards + notes with Gemini
+    _transcript_words = len(transcript.split()) if transcript else 0
+    _scale_hint = _scaling_instruction(_transcript_words, _scale_context_words, _scale_image_count)
+    parts = [_scale_hint] + parts
+
     try:
         result = _run_gemini(parts)
         if result.get('insufficient_content'):
@@ -386,6 +527,48 @@ def process(request):
     return Response(result)
 
 
+# ── Folders ──────────────────────────────────────────────────────────────────
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def course_folders(request):
+    if request.method == 'GET':
+        folders = CourseFolder.objects.filter(user=request.user)
+        return Response(CourseFolderSerializer(folders, many=True).data)
+    serializer = CourseFolderSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    serializer.save(user=request.user)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def course_folder_detail(request, pk):
+    folder = get_object_or_404(CourseFolder, pk=pk, user=request.user)
+    folder.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET', 'POST'])
+@permission_classes([IsAuthenticated])
+def lecture_folders(request, course_pk):
+    course = get_object_or_404(Course, pk=course_pk, user=request.user)
+    if request.method == 'GET':
+        return Response(LectureFolderSerializer(course.lecture_folders.all(), many=True).data)
+    serializer = LectureFolderSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    serializer.save(course=course)
+    return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def lecture_folder_detail(request, pk):
+    folder = get_object_or_404(LectureFolder, pk=pk, course__user=request.user)
+    folder.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 # ── Courses ──────────────────────────────────────────────────────────────────
 
 @api_view(['GET', 'POST'])
@@ -393,7 +576,11 @@ def process(request):
 def courses_list(request):
     if request.method == 'GET':
         courses = Course.objects.filter(user=request.user)
-        return Response(CourseListSerializer(courses, many=True).data)
+        folders = CourseFolder.objects.filter(user=request.user)
+        return Response({
+            'courses': CourseListSerializer(courses, many=True).data,
+            'folders': CourseFolderSerializer(folders, many=True).data,
+        })
 
     serializer = CourseListSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -411,9 +598,18 @@ def course_detail(request, pk):
         data['exam_scores'] = list(
             course.exams.values('tag', 'last_score', 'last_total', 'attempts')
         )
+        data['lecture_folders'] = LectureFolderSerializer(course.lecture_folders.all(), many=True).data
         return Response(data)
 
     if request.method == 'PUT':
+        # Handle folder_id separately (user-scoped validation)
+        folder_id = request.data.get('folder_id')
+        if 'folder_id' in request.data:
+            if folder_id is None:
+                course.folder = None
+            else:
+                course.folder = get_object_or_404(CourseFolder, pk=folder_id, user=request.user)
+            course.save(update_fields=['folder'])
         serializer = CourseListSerializer(course, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         serializer.save()
@@ -486,6 +682,16 @@ def lecture_detail(request, pk):
         if 'tags' in request.data:
             lecture.tags = request.data['tags']
             fields.append('tags')
+        if 'notes' in request.data:
+            lecture.notes = request.data['notes']
+            fields.append('notes')
+        if 'folder_id' in request.data:
+            folder_id = request.data['folder_id']
+            if folder_id is None:
+                lecture.folder = None
+            else:
+                lecture.folder = get_object_or_404(LectureFolder, pk=folder_id, course=lecture.course)
+            fields.append('folder')
         if fields:
             lecture.save(update_fields=fields)
         return Response(LectureDetailSerializer(lecture).data)
@@ -525,6 +731,186 @@ def lecture_regenerate(request, pk):
         Flashcard.objects.create(lecture=lecture, order=i, front=fc['front'], back=fc['back'])
 
     print(f'[REGENERATE] lecture {pk}: {len(result.get("flashcards", []))} flashcards')
+    return Response(LectureDetailSerializer(lecture).data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def lecture_clear(request, pk):
+    """Delete all flashcards and clear notes + transcript for a lecture."""
+    lecture = get_object_or_404(Lecture, pk=pk, course__user=request.user)
+    lecture.flashcards.all().delete()
+    lecture.notes = ''
+    lecture.transcript = ''
+    lecture.save(update_fields=['notes', 'transcript'])
+    return Response(LectureDetailSerializer(lecture).data)
+
+
+@api_view(['DELETE'])
+@permission_classes([IsAuthenticated])
+def flashcard_delete(request, pk):
+    """Delete a single flashcard."""
+    flashcard = get_object_or_404(Flashcard, pk=pk, lecture__course__user=request.user)
+    flashcard.delete()
+    return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def lecture_append(request, pk):
+    """Process new audio/images/files and append the results to an existing lecture."""
+    lecture = get_object_or_404(Lecture, pk=pk, course__user=request.user)
+
+    audio_file = request.FILES.get('audio')
+    image_files = request.FILES.getlist('images')
+    context_files = request.FILES.getlist('files')
+
+    if not audio_file and not image_files and not context_files:
+        return Response({'error': 'At least one of audio, images, or files is required.'}, status=400)
+
+    transcript = ''
+
+    # 1. Transcribe new audio if provided
+    if audio_file:
+        _MIME_FIXES = {
+            'audio/x-m4a': 'audio/m4a', 'audio/x-wav': 'audio/wav',
+            'audio/x-flac': 'audio/flac', 'audio/x-ogg': 'audio/ogg',
+            'audio/mpeg': 'audio/mpeg', 'audio/webm': 'audio/webm',
+        }
+        _EXT_MIME = {
+            '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/m4a',
+            '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.aac': 'audio/aac',
+            '.webm': 'audio/webm', '.mp4': 'audio/mp4', '.mpeg': 'audio/mpeg',
+        }
+        raw_mime = (audio_file.content_type or '').split(';')[0].strip()
+        ext = '.' + audio_file.name.rsplit('.', 1)[-1].lower() if '.' in audio_file.name else ''
+        audio_mime = _MIME_FIXES.get(raw_mime) or raw_mime or _EXT_MIME.get(ext, 'audio/webm')
+        if not audio_mime or audio_mime == 'application/octet-stream':
+            audio_mime = _EXT_MIME.get(ext, 'audio/webm')
+        try:
+            groq_client = OpenAI(
+                api_key=settings.GROQ_API_KEY,
+                base_url='https://api.groq.com/openai/v1',
+                timeout=30.0,
+            )
+            transcript_response = groq_client.audio.transcriptions.create(
+                model='whisper-large-v3',
+                file=(audio_file.name, audio_file.read(), audio_mime),
+            )
+            transcript = transcript_response.text.strip()
+        except Exception as e:
+            return Response({'error': f'Transcription failed: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+    # 2. Build parts (same pipeline as process view)
+    existing_tags = ', '.join(lecture.tags) if lecture.tags else 'none yet'
+    append_hint = (
+        f'This is ADDITIONAL content to append to an existing lecture titled "{lecture.title}". '
+        f'The lecture already covers these topics: {existing_tags}. '
+        f'Generate NEW flashcards and notes that ADD TO and complement the existing content — '
+        f'do not repeat what is already covered.'
+    )
+
+    if len(transcript) >= 10:
+        parts: list = [append_hint, f'New audio transcript:\n\n{transcript}']
+    else:
+        parts: list = [append_hint, 'No new audio transcript. Generate from images/context files only.']
+
+    _scale_image_count = len(image_files)
+    _scale_context_words = 0
+
+    for img in image_files:
+        pil_img = Image.open(io.BytesIO(img.read()))
+        parts.append(pil_img)
+    if image_files:
+        parts.append('The images above are additional photos provided for this lecture.')
+
+    for cf in context_files:
+        cf_bytes = cf.read()
+        mime_type = (cf.content_type or '').split(';')[0].strip() or 'application/octet-stream'
+        name_lower = cf.name.lower()
+        try:
+            if mime_type.startswith('image/') or name_lower.endswith(('.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic', '.heif')):
+                parts.append(Image.open(io.BytesIO(cf_bytes)))
+                _scale_image_count += 1
+            elif mime_type == 'application/pdf' or name_lower.endswith('.pdf'):
+                parts.append(types.Part.from_bytes(data=cf_bytes, mime_type='application/pdf'))
+            elif mime_type.startswith('audio/') or name_lower.endswith(('.mp3', '.wav', '.m4a', '.ogg', '.flac', '.aac', '.webm')):
+                _AUDIO_MIME_MAP = {'.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.m4a': 'audio/mp4', '.ogg': 'audio/ogg', '.flac': 'audio/flac', '.aac': 'audio/aac', '.webm': 'audio/webm'}
+                ext2 = '.' + name_lower.rsplit('.', 1)[-1] if '.' in name_lower else ''
+                resolved_mime = mime_type if mime_type.startswith('audio/') else _AUDIO_MIME_MAP.get(ext2, 'audio/mpeg')
+                parts.append(types.Part.from_bytes(data=cf_bytes, mime_type=resolved_mime))
+                _scale_context_words += len(cf_bytes) // 150
+            elif name_lower.endswith(('.pptx', '.ppt')):
+                pdf_bytes = _convert_to_pdf(cf_bytes, cf.name)
+                if pdf_bytes:
+                    parts.append(types.Part.from_bytes(data=pdf_bytes, mime_type='application/pdf'))
+                else:
+                    from pptx import Presentation
+                    prs = Presentation(io.BytesIO(cf_bytes))
+                    slides_text = [f'[Slide {i}]\n' + '\n'.join(s.text.strip() for s in slide.shapes if hasattr(s, 'text') and s.text.strip()) for i, slide in enumerate(prs.slides, 1)]
+                    extracted = '\n\n'.join(t for t in slides_text if t.strip())
+                    parts.append(f'Context slides "{cf.name}":\n\n{extracted}')
+                    _scale_context_words += len(extracted.split())
+            elif name_lower.endswith(('.docx', '.doc')):
+                pdf_bytes = _convert_to_pdf(cf_bytes, cf.name)
+                if pdf_bytes:
+                    parts.append(types.Part.from_bytes(data=pdf_bytes, mime_type='application/pdf'))
+                else:
+                    from docx import Document
+                    doc = Document(io.BytesIO(cf_bytes))
+                    extracted = '\n\n'.join(p.text for p in doc.paragraphs if p.text.strip())
+                    parts.append(f'Context document "{cf.name}":\n\n{extracted}')
+                    _scale_context_words += len(extracted.split())
+            else:
+                try:
+                    text_content = cf_bytes.decode('utf-8', errors='strict')
+                    parts.append(f'Context document "{cf.name}":\n\n{text_content}')
+                    _scale_context_words += len(text_content.split())
+                except UnicodeDecodeError:
+                    pass
+        except Exception as e:
+            print(f'[APPEND CONTEXT FILE ERROR] {cf.name}: {e}')
+
+    _transcript_words = len(transcript.split()) if transcript else 0
+    scale_hint = _scaling_instruction(_transcript_words, _scale_context_words, _scale_image_count)
+    parts = [scale_hint] + parts
+
+    # 3. Run Gemini
+    try:
+        result = _run_gemini(parts)
+        if result.get('insufficient_content'):
+            reason = result.get('reason', 'Not enough content.')
+            return Response({'error': f'Not enough content to append: {reason}'}, status=422)
+    except TimeoutError:
+        return Response({'error': 'Generation timed out. Please try again.'}, status=status.HTTP_504_GATEWAY_TIMEOUT)
+    except json.JSONDecodeError:
+        return Response({'error': 'Gemini returned malformed JSON. Try again.'}, status=status.HTTP_502_BAD_GATEWAY)
+    except Exception as e:
+        return Response({'error': f'Generation failed: {str(e)}'}, status=status.HTTP_502_BAD_GATEWAY)
+
+    # 4. Append results to lecture
+    new_flashcards = result.get('flashcards', [])
+    new_notes = result.get('notes', '')
+    new_transcript_part = result.get('transcript', transcript)
+
+    # Append flashcards
+    last_order = lecture.flashcards.order_by('-order').values_list('order', flat=True).first() or 0
+    for i, fc in enumerate(new_flashcards):
+        Flashcard.objects.create(lecture=lecture, order=last_order + i + 1, front=fc['front'], back=fc['back'])
+
+    # Append notes as a new section
+    if new_notes:
+        separator = '\n\n---\n\n## Additional Content\n\n'
+        lecture.notes = (lecture.notes + separator + new_notes) if lecture.notes else new_notes
+        lecture.save(update_fields=['notes'])
+
+    # Append transcript
+    if new_transcript_part:
+        lecture.transcript = ((lecture.transcript + '\n\n[Additional Recording]\n' + new_transcript_part)
+                              if lecture.transcript else new_transcript_part)
+        lecture.save(update_fields=['transcript'])
+
+    print(f'[APPEND] lecture {pk}: +{len(new_flashcards)} flashcards')
     return Response(LectureDetailSerializer(lecture).data)
 
 

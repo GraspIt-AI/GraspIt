@@ -1,5 +1,21 @@
 from rest_framework import serializers
-from .models import Course, Lecture, Flashcard
+from .models import Course, CourseFolder, Lecture, LectureFolder, Flashcard
+
+
+class CourseFolderSerializer(serializers.ModelSerializer):
+    course_count = serializers.IntegerField(source='courses.count', read_only=True)
+
+    class Meta:
+        model = CourseFolder
+        fields = ['id', 'name', 'created_at', 'course_count']
+
+
+class LectureFolderSerializer(serializers.ModelSerializer):
+    lecture_count = serializers.IntegerField(source='lectures_in_folder.count', read_only=True)
+
+    class Meta:
+        model = LectureFolder
+        fields = ['id', 'name', 'created_at', 'lecture_count']
 
 
 class FlashcardSerializer(serializers.ModelSerializer):
@@ -13,7 +29,7 @@ class LectureListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lecture
-        fields = ['id', 'title', 'summary', 'tags', 'created_at', 'flashcard_count']
+        fields = ['id', 'title', 'summary', 'tags', 'created_at', 'flashcard_count', 'folder_id']
 
 
 class LectureDetailSerializer(serializers.ModelSerializer):
@@ -21,7 +37,7 @@ class LectureDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Lecture
-        fields = ['id', 'course', 'title', 'summary', 'tags', 'transcript', 'notes', 'created_at', 'flashcards']
+        fields = ['id', 'course', 'title', 'summary', 'tags', 'transcript', 'notes', 'created_at', 'flashcards', 'folder_id']
 
     def create(self, validated_data):
         flashcards_data = validated_data.pop('flashcards', [])
@@ -36,7 +52,7 @@ class CourseListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Course
-        fields = ['id', 'name', 'description', 'color', 'created_at', 'updated_at', 'lecture_count']
+        fields = ['id', 'name', 'description', 'color', 'created_at', 'updated_at', 'lecture_count', 'folder_id']
 
 
 class CourseDetailSerializer(serializers.ModelSerializer):
@@ -44,4 +60,4 @@ class CourseDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Course
-        fields = ['id', 'name', 'description', 'color', 'created_at', 'updated_at', 'lectures']
+        fields = ['id', 'name', 'description', 'color', 'created_at', 'updated_at', 'lectures', 'folder_id']

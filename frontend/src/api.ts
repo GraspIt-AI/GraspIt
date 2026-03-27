@@ -1,5 +1,19 @@
 export const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
+export interface CourseFolder {
+  id: number
+  name: string
+  created_at: string
+  course_count: number
+}
+
+export interface LectureFolder {
+  id: number
+  name: string
+  created_at: string
+  lecture_count: number
+}
+
 export interface CourseListItem {
   id: number
   name: string
@@ -8,6 +22,7 @@ export interface CourseListItem {
   created_at: string
   updated_at: string
   lecture_count: number
+  folder_id: number | null
 }
 
 export interface LectureListItem {
@@ -17,6 +32,7 @@ export interface LectureListItem {
   tags: string[]
   created_at: string
   flashcard_count: number
+  folder_id: number | null
 }
 
 export interface RecentLecture {
@@ -39,6 +55,7 @@ export interface ExamScore {
 export interface CourseDetail extends Omit<CourseListItem, 'lecture_count'> {
   lectures: LectureListItem[]
   exam_scores: ExamScore[]
+  lecture_folders: LectureFolder[]
 }
 
 export interface LectureDetail {
@@ -166,13 +183,24 @@ export const auth = {
 export const api = {
   search: (q: string, courseId?: number) =>
     req<SearchResults>(`/api/search/?q=${encodeURIComponent(q)}${courseId ? `&course_id=${courseId}` : ''}`),
+  courseFolders: {
+    list: () => req<CourseFolder[]>('/api/course-folders/'),
+    create: (body: { name: string }) =>
+      req<CourseFolder>('/api/course-folders/', { method: 'POST', body: JSON.stringify(body) }),
+    delete: (id: number) => req<void>(`/api/course-folders/${id}/`, { method: 'DELETE' }),
+  },
+  lectureFolders: {
+    create: (courseId: number, body: { name: string }) =>
+      req<LectureFolder>(`/api/courses/${courseId}/lecture-folders/`, { method: 'POST', body: JSON.stringify(body) }),
+    delete: (id: number) => req<void>(`/api/lecture-folders/${id}/`, { method: 'DELETE' }),
+  },
   courses: {
-    list: () => req<CourseListItem[]>('/api/courses/'),
+    list: () => req<{ courses: CourseListItem[]; folders: CourseFolder[] }>('/api/courses/'),
     default: () => req<{ id: number; name: string }>('/api/courses/default/'),
     create: (body: { name: string; description?: string; color?: string }) =>
       req<CourseListItem>('/api/courses/', { method: 'POST', body: JSON.stringify(body) }),
     get: (id: number) => req<CourseDetail>(`/api/courses/${id}/`),
-    update: (id: number, body: Partial<{ name: string; description: string; color: string }>) =>
+    update: (id: number, body: Partial<{ name: string; description: string; color: string; folder_id: number | null }>) =>
       req<CourseListItem>(`/api/courses/${id}/`, { method: 'PUT', body: JSON.stringify(body) }),
     delete: (id: number) => req<void>(`/api/courses/${id}/`, { method: 'DELETE' }),
     getExam: (id: number, tag: string) =>
@@ -200,10 +228,26 @@ export const api = {
       flashcards: { front: string; back: string }[]
     }) => req<LectureDetail>('/api/lectures/', { method: 'POST', body: JSON.stringify(body) }),
     get: (id: number) => req<LectureDetail>(`/api/lectures/${id}/`),
-    update: (id: number, body: Partial<{ transcript: string; tags: string[] }>) =>
+    update: (id: number, body: Partial<{ transcript: string; tags: string[]; notes: string; folder_id: number | null }>) =>
       req<LectureDetail>(`/api/lectures/${id}/`, { method: 'PATCH', body: JSON.stringify(body) }),
     regenerate: (id: number) =>
       req<LectureDetail>(`/api/lectures/${id}/regenerate/`, { method: 'POST' }),
     delete: (id: number) => req<void>(`/api/lectures/${id}/`, { method: 'DELETE' }),
+    clear: (id: number) => req<LectureDetail>(`/api/lectures/${id}/clear/`, { method: 'POST' }),
+    append: async (id: number, form: FormData): Promise<LectureDetail> => {
+      const { getAccessToken } = await import('./authStore')
+      const token = getAccessToken()
+      const res = await fetch(`${API_BASE}/api/lectures/${id}/append/`, {
+        method: 'POST',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        body: form,
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Append failed')
+      return data
+    },
+  },
+  flashcards: {
+    delete: (id: number) => req<void>(`/api/flashcards/${id}/`, { method: 'DELETE' }),
   },
 }

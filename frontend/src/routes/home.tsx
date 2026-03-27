@@ -193,7 +193,7 @@ export default function HomePage() {
   })
 
   const hasRecentLectures = recentLectures && recentLectures.length > 0
-  const visibleCourses = courses?.filter((c) => c.name !== 'Miscellaneous') ?? []
+  const visibleCourses = (courses?.courses ?? []).filter((c) => c.name !== 'Miscellaneous')
 
   return (
     <div className="min-h-screen bg-[#fafafa]">
