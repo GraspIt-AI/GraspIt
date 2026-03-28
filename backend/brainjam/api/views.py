@@ -22,7 +22,7 @@ from .models import Course, CourseFolder, Lecture, LectureFolder, Flashcard, Top
 from .serializers import (
     CourseListSerializer, CourseDetailSerializer,
     CourseFolderSerializer, LectureFolderSerializer,
-    LectureDetailSerializer,
+    LectureDetailSerializer, FlashcardSerializer,
 )
 from PIL import Image
 import io
@@ -1163,13 +1163,19 @@ def lecture_clear(request, pk):
     return Response(LectureDetailSerializer(lecture).data)
 
 
-@api_view(['DELETE'])
+@api_view(['DELETE', 'PATCH'])
 @permission_classes([IsAuthenticated])
-def flashcard_delete(request, pk):
-    """Delete a single flashcard."""
+def flashcard_detail(request, pk):
+    """Delete or update a single flashcard."""
     flashcard = get_object_or_404(Flashcard, pk=pk, lecture__course__user=request.user)
-    flashcard.delete()
-    return Response(status=status.HTTP_204_NO_CONTENT)
+    if request.method == 'DELETE':
+        flashcard.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+    # PATCH
+    serializer = FlashcardSerializer(flashcard, data=request.data, partial=True)
+    serializer.is_valid(raise_exception=True)
+    serializer.save()
+    return Response(serializer.data)
 
 
 @api_view(['POST'])

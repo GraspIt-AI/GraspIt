@@ -249,5 +249,9 @@ export const api = {
   },
   flashcards: {
     delete: (id: number) => req<void>(`/api/flashcards/${id}/`, { method: 'DELETE' }),
+    update: (id: number, data: { front?: string; back?: string }) =>
+      req<{ id: number; front: string; back: string; order: number }>(
+        `/api/flashcards/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }
+      ),
   },
 }

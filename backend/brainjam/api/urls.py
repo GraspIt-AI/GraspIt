@@ -36,5 +36,5 @@ urlpatterns = [
     path('lectures/<int:pk>/regenerate/', views.lecture_regenerate, name='lecture-regenerate'),
     path('lectures/<int:pk>/append/', views.lecture_append, name='lecture-append'),
     path('lectures/<int:pk>/clear/', views.lecture_clear, name='lecture-clear'),
-    path('flashcards/<int:pk>/', views.flashcard_delete, name='flashcard-delete'),
+    path('flashcards/<int:pk>/', views.flashcard_detail, name='flashcard-detail'),
 ]
