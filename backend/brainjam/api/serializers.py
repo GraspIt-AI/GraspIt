@@ -21,7 +21,7 @@ class LectureFolderSerializer(serializers.ModelSerializer):
 class FlashcardSerializer(serializers.ModelSerializer):
     class Meta:
         model = Flashcard
-        fields = ['id', 'front', 'back', 'order']
+        fields = ['id', 'front', 'back', 'order', 'is_manual']
 
 
 class LectureListSerializer(serializers.ModelSerializer):

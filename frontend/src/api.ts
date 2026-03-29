@@ -67,7 +67,7 @@ export interface LectureDetail {
   transcript: string
   notes: string
   created_at: string
-  flashcards: { id: number; front: string; back: string; order: number }[]
+  flashcards: { id: number; front: string; back: string; order: number; is_manual: boolean }[]
 }
 
 export type ExamQuestion =
@@ -248,6 +248,14 @@ export const api = {
     },
   },
   flashcards: {
+    create: (lectureId: number, data: { front: string; back: string }) =>
+      req<{ id: number; front: string; back: string; order: number; is_manual: boolean }>(
+        `/api/lectures/${lectureId}/flashcards/`, { method: 'POST', body: JSON.stringify(data) }
+      ),
     delete: (id: number) => req<void>(`/api/flashcards/${id}/`, { method: 'DELETE' }),
+    update: (id: number, data: { front?: string; back?: string }) =>
+      req<{ id: number; front: string; back: string; order: number; is_manual: boolean }>(
+        `/api/flashcards/${id}/`, { method: 'PATCH', body: JSON.stringify(data) }
+      ),
   },
 }
