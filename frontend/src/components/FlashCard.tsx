@@ -45,7 +45,7 @@ export default function FlashCard({ front, back, index, total, flipped: flippedP
             className="absolute inset-0 rounded-2xl bg-indigo-600 text-white flex items-center justify-center p-6 text-center font-medium text-base overflow-y-auto max-h-60"
             style={{ backfaceVisibility: 'hidden' }}
           >
-            <Md className="prose prose-sm prose-invert max-w-none [&_p]:my-0 [&_.katex]:text-white">{front}</Md>
+            <Md className="prose prose-sm prose-invert max-w-none [&_p]:my-0 [&_p]:text-white [&_.katex]:text-white">{front}</Md>
           </div>
           {/* Back */}
           <div

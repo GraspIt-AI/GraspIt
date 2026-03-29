@@ -90,6 +90,7 @@ class Flashcard(models.Model):
     front = models.TextField()
     back = models.TextField()
     order = models.PositiveIntegerField(default=0)
+    is_manual = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['order']

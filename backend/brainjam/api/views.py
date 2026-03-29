@@ -13,7 +13,7 @@ from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
-from django.db.models import F
+from django.db.models import F, Max
 from rest_framework_simplejwt.tokens import RefreshToken
 from openai import OpenAI
 from google import genai
@@ -1124,8 +1124,19 @@ def lecture_regenerate(request, pk):
     if not lecture.transcript:
         return Response({'error': 'Lecture has no transcript to regenerate from.'}, status=400)
 
+    # Preserve manually created/edited cards and pass them as a hint to avoid duplicates
+    manual_cards = list(lecture.flashcards.filter(is_manual=True).values('front', 'back'))
+
+    parts = [f'Lecture transcript:\n\n{lecture.transcript}']
+    if manual_cards:
+        hint_lines = '\n'.join(f'- Q: {c["front"]}\n  A: {c["back"]}' for c in manual_cards)
+        parts.append(
+            f'\nThe following flashcards already exist and were manually created — '
+            f'do NOT generate cards that duplicate or closely overlap these:\n{hint_lines}'
+        )
+
     try:
-        result = _run_gemini([f'Lecture transcript:\n\n{lecture.transcript}'])
+        result = _run_gemini(parts)
     except TimeoutError:
         return Response({'error': 'Generation timed out. Please try again.'}, status=status.HTTP_504_GATEWAY_TIMEOUT)
     except json.JSONDecodeError:
@@ -1143,11 +1154,18 @@ def lecture_regenerate(request, pk):
     lecture.tags = result.get('tags', lecture.tags)
     lecture.save(update_fields=['title', 'summary', 'notes', 'tags'])
 
-    lecture.flashcards.all().delete()
-    for i, fc in enumerate(result.get('flashcards', [])):
+    # Replace only AI-generated cards; keep manual ones
+    lecture.flashcards.filter(is_manual=False).delete()
+    new_flashcards = result.get('flashcards', [])
+    for i, fc in enumerate(new_flashcards):
         Flashcard.objects.create(lecture=lecture, order=i, front=fc['front'], back=fc['back'])
 
-    print(f'[REGENERATE] lecture {pk}: {len(result.get("flashcards", []))} flashcards')
+    # Re-number manual cards to appear after the new AI cards
+    for i, card in enumerate(lecture.flashcards.filter(is_manual=True).order_by('order')):
+        card.order = len(new_flashcards) + i
+        card.save(update_fields=['order'])
+
+    print(f'[REGENERATE] lecture {pk}: {len(new_flashcards)} AI + {len(manual_cards)} manual flashcards')
     return Response(LectureDetailSerializer(lecture).data)
 
 
@@ -1171,11 +1189,31 @@ def flashcard_detail(request, pk):
     if request.method == 'DELETE':
         flashcard.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
-    # PATCH
+    # PATCH — editing a card marks it as manual so it survives regeneration
     serializer = FlashcardSerializer(flashcard, data=request.data, partial=True)
     serializer.is_valid(raise_exception=True)
-    serializer.save()
+    serializer.save(is_manual=True)
     return Response(serializer.data)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def lecture_flashcard_create(request, pk):
+    """Add a new manual flashcard to a lecture."""
+    lecture = get_object_or_404(Lecture, pk=pk, course__user=request.user)
+    front = request.data.get('front', '').strip()
+    back = request.data.get('back', '').strip()
+    if not front or not back:
+        return Response({'error': 'front and back are required.'}, status=400)
+    max_order = lecture.flashcards.aggregate(Max('order'))['order__max']
+    flashcard = Flashcard.objects.create(
+        lecture=lecture,
+        front=front,
+        back=back,
+        order=(max_order + 1) if max_order is not None else 0,
+        is_manual=True,
+    )
+    return Response(FlashcardSerializer(flashcard).data, status=201)
 
 
 @api_view(['POST'])

@@ -183,6 +183,16 @@ export default function LecturePage({ lectureId }: Props) {
     },
   })
 
+  const createFlashcard = useMutation({
+    mutationFn: ({ front, back }: { front: string; back: string }) =>
+      api.flashcards.create(lectureId, { front, back }),
+    onSuccess: (newCard) => {
+      qc.invalidateQueries({ queryKey: ['lecture', lectureId] })
+      setAddingCard(false)
+      setTimeout(() => setCardIndex(newCard.order), 50)
+    },
+  })
+
   const { data: course } = useQuery({
     queryKey: ['course', lecture?.course],
     queryFn: () => api.courses.get(lecture!.course),
@@ -202,6 +212,7 @@ export default function LecturePage({ lectureId }: Props) {
   const [confirmClear, setConfirmClear] = useState(false)
   const [confirmDeleteCard, setConfirmDeleteCard] = useState(false)
   const [editingCard, setEditingCard] = useState(false)
+  const [addingCard, setAddingCard] = useState(false)
   const [cardFrontDraft, setCardFrontDraft] = useState('')
   const [cardBackDraft, setCardBackDraft] = useState('')
   const [showAppend, setShowAppend] = useState(false)
@@ -214,10 +225,10 @@ export default function LecturePage({ lectureId }: Props) {
   const [tagInput, setTagInput] = useState('')
   const { triggerPrint, printPortal } = usePrintNotes(lecture?.title ?? '', lecture?.notes ?? '')
 
-  useEffect(() => { setCardIndex(0); setCardFlipped(false); setEditingCard(false) }, [lecture?.flashcards.length])
+  useEffect(() => { setCardIndex(0); setCardFlipped(false); setEditingCard(false); setAddingCard(false) }, [lecture?.flashcards.length])
 
   const handleKey = useCallback((e: KeyboardEvent) => {
-    if (!lecture || tab !== 'flashcards' || editingCard) return
+    if (!lecture || tab !== 'flashcards' || editingCard || addingCard) return
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
       e.preventDefault()
       setCardIndex((i) => { const next = Math.min(lecture.flashcards.length - 1, i + 1); if (next !== i) setCardFlipped(false); return next })
@@ -228,7 +239,7 @@ export default function LecturePage({ lectureId }: Props) {
       e.preventDefault()
       setCardFlipped((f) => !f)
     }
-  }, [lecture, tab, editingCard])
+  }, [lecture, tab, editingCard, addingCard])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKey)
@@ -427,7 +438,13 @@ export default function LecturePage({ lectureId }: Props) {
             {/* Flashcards */}
             {tab === 'flashcards' && (
               <div className="flex flex-col gap-4">
-                <div className="flex justify-end">
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => { setCardFrontDraft(''); setCardBackDraft(''); setAddingCard(true); setEditingCard(false) }}
+                    disabled={addingCard}
+                    className="text-xs px-3 py-1.5 rounded-lg border border-dashed border-indigo-200 text-indigo-500 hover:bg-indigo-50 disabled:opacity-40 transition-colors font-medium">
+                    + Add card
+                  </button>
                   <button
                     onClick={async () => {
                       setAnkiExporting(true)
@@ -440,9 +457,65 @@ export default function LecturePage({ lectureId }: Props) {
                     {ankiExporting ? 'Exporting…' : 'Export to Anki'}
                   </button>
                 </div>
-                {lecture.flashcards.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-8">No flashcards yet.</p>
-                ) : (
+                {addingCard && (
+                  <div className="flex flex-col gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-400 text-center">New card</p>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Front</label>
+                      <textarea
+                        autoFocus
+                        rows={4}
+                        className="w-full bg-[#fafafa] rounded-xl p-4 text-sm text-gray-700 leading-relaxed font-mono resize-none outline-none focus:ring-2 focus:ring-indigo-200 border border-indigo-200"
+                        value={cardFrontDraft}
+                        onChange={(e) => setCardFrontDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); createFlashcard.mutate({ front: cardFrontDraft, back: cardBackDraft }) }
+                          else if (e.key === 'Escape') { setAddingCard(false) }
+                        }}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Back</label>
+                      <textarea
+                        rows={4}
+                        className="w-full bg-[#fafafa] rounded-xl p-4 text-sm text-gray-700 leading-relaxed font-mono resize-none outline-none focus:ring-2 focus:ring-indigo-200 border border-indigo-200"
+                        value={cardBackDraft}
+                        onChange={(e) => setCardBackDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') { e.preventDefault(); createFlashcard.mutate({ front: cardFrontDraft, back: cardBackDraft }) }
+                          else if (e.key === 'Escape') { setAddingCard(false) }
+                        }}
+                      />
+                    </div>
+                    {createFlashcard.error && (
+                      <p className="text-xs text-red-500">{(createFlashcard.error as Error).message}</p>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-gray-400">⌘↵ to save · Esc to cancel</p>
+                      <div className="flex gap-2">
+                        <button onClick={() => setAddingCard(false)}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition-colors font-medium">
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => createFlashcard.mutate({ front: cardFrontDraft, back: cardBackDraft })}
+                          disabled={createFlashcard.isPending || !cardFrontDraft.trim() || !cardBackDraft.trim()}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors font-medium">
+                          {createFlashcard.isPending ? 'Adding…' : 'Add card'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {!addingCard && lecture.flashcards.length === 0 ? (
+                  <div className="flex flex-col items-center gap-3 py-8">
+                    <p className="text-sm text-gray-400">No flashcards yet.</p>
+                    <button onClick={() => { setCardFrontDraft(''); setCardBackDraft(''); setAddingCard(true) }}
+                      className="text-xs px-3 py-1.5 rounded-lg border border-dashed border-indigo-200 text-indigo-500 hover:bg-indigo-50 transition-colors font-medium">
+                      + Add a card
+                    </button>
+                  </div>
+                ) : !addingCard && (
                   <>
                     {editingCard ? (
                       <div className="flex flex-col gap-3">
@@ -505,14 +578,22 @@ export default function LecturePage({ lectureId }: Props) {
                       </div>
                     ) : (
                       <>
-                        <FlashCard
-                          front={lecture.flashcards[safeIdx].front}
-                          back={lecture.flashcards[safeIdx].back}
-                          index={cardIndex}
-                          total={lecture.flashcards.length}
-                          flipped={cardFlipped}
-                          onFlip={() => setCardFlipped(!cardFlipped)}
-                        />
+                        <div className="relative">
+                          <FlashCard
+                            front={lecture.flashcards[safeIdx].front}
+                            back={lecture.flashcards[safeIdx].back}
+                            index={cardIndex}
+                            total={lecture.flashcards.length}
+                            flipped={cardFlipped}
+                            onFlip={() => setCardFlipped(!cardFlipped)}
+                          />
+                          {lecture.flashcards[safeIdx].is_manual && (
+                            <span title="Manually created — survives regeneration"
+                              className="absolute top-2 right-2 text-xs bg-indigo-100 text-indigo-500 rounded-full px-2 py-0.5 font-medium select-none">
+                              ✎
+                            </span>
+                          )}
+                        </div>
                         {/* Card actions */}
                         <div className="flex items-center justify-center gap-4">
                           <button
