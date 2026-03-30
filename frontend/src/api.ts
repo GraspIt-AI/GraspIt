@@ -99,14 +99,9 @@ export async function streamCourseChat(
   onDone: () => void,
   onError: (err: string) => void,
 ): Promise<void> {
-  const { getAccessToken } = await import('./authStore')
-  const token = getAccessToken()
-  const res = await fetch(`${API_BASE}/api/courses/${courseId}/chat/`, {
+  const res = await fetchWithAuth(`/api/courses/${courseId}/chat/`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages }),
   })
   if (!res.ok || !res.body) { onError('Request failed'); return }
@@ -129,11 +124,7 @@ export async function streamCourseChat(
 }
 
 export async function downloadFile(url: string, filename: string): Promise<void> {
-  const { getAccessToken } = await import('./authStore')
-  const token = getAccessToken()
-  const res = await fetch(`${API_BASE}${url}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  })
+  const res = await fetchWithAuth(url)
   if (!res.ok) {
     const data = await res.json().catch(() => ({}))
     throw new Error(data.error ?? 'Download failed')
@@ -148,17 +139,69 @@ export async function downloadFile(url: string, filename: string): Promise<void>
   URL.revokeObjectURL(a.href)
 }
 
+let refreshPromise: Promise<string | null> | null = null;
+
+async function fetchWithAuth(url: string, options?: RequestInit): Promise<Response> {
+  const { getAccessToken, getRefreshToken, setAuth, getAuthUser, clearAuth } = await import('./authStore')
+  
+  let token = getAccessToken()
+  const buildOptions = () => {
+    const headers = new Headers(options?.headers)
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`)
+    }
+    return { ...options, headers }
+  }
+
+  let res = await fetch(`${API_BASE}${url}`, buildOptions())
+
+  if (res.status === 401 && token && !url.includes('/api/auth/refresh/') && !url.includes('/api/auth/login/')) {
+    if (!refreshPromise) {
+      refreshPromise = (async () => {
+        const refreshStr = getRefreshToken()
+        if (!refreshStr) return null
+        try {
+          const rfRes = await fetch(`${API_BASE}/api/auth/refresh/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refresh: refreshStr })
+          })
+          if (!rfRes.ok) throw new Error('Refresh failed')
+          const data = await rfRes.json()
+          const user = getAuthUser()
+          if (user) {
+            setAuth({ access: data.access, refresh: data.refresh || refreshStr }, user)
+          }
+          return data.access
+        } catch {
+          clearAuth()
+          sessionStorage.setItem('session_expired', '1')
+          window.location.href = '/login'
+          return null
+        } finally {
+          refreshPromise = null
+        }
+      })()
+    }
+
+    const newToken = await refreshPromise
+    if (newToken) {
+      token = newToken
+      res = await fetch(`${API_BASE}${url}`, buildOptions())
+    }
+  }
+  return res
+}
+
 async function req<T>(url: string, options?: RequestInit): Promise<T> {
-  const { getAccessToken } = await import('./authStore')
-  const token = getAccessToken()
-  const res = await fetch(`${API_BASE}${url}`, {
+  const finalOptions = {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
-    },
-    ...options,
-  })
+    }
+  }
+  const res = await fetchWithAuth(url, finalOptions)
   if (res.status === 204) return undefined as T
   const data = await res.json()
   if (!res.ok) throw new Error(data.detail ?? data.error ?? 'Request failed')
@@ -235,11 +278,8 @@ export const api = {
     delete: (id: number) => req<void>(`/api/lectures/${id}/`, { method: 'DELETE' }),
     clear: (id: number) => req<LectureDetail>(`/api/lectures/${id}/clear/`, { method: 'POST' }),
     append: async (id: number, form: FormData): Promise<LectureDetail> => {
-      const { getAccessToken } = await import('./authStore')
-      const token = getAccessToken()
-      const res = await fetch(`${API_BASE}/api/lectures/${id}/append/`, {
+      const res = await fetchWithAuth(`/api/lectures/${id}/append/`, {
         method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: form,
       })
       const data = await res.json()

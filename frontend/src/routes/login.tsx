@@ -9,6 +9,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [sessionExpired] = useState(() => {
+    const flag = sessionStorage.getItem('session_expired')
+    if (flag) sessionStorage.removeItem('session_expired')
+    return !!flag
+  })
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -33,6 +38,12 @@ export default function LoginPage() {
           <img src="/logo.png" alt="GraspIt" className="h-16 w-auto mb-2" />
           <p className="text-gray-400 text-sm">Sign in to continue learning</p>
         </div>
+
+        {sessionExpired && (
+          <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl px-4 py-3 text-sm text-center">
+            Your session expired. Please sign in again.
+          </div>
+        )}
 
         {/* Form card */}
         <div className="bg-white border border-gray-100 rounded-2xl p-7 shadow-sm flex flex-col gap-5">
