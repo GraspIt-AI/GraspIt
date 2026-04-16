@@ -3,6 +3,7 @@ import { Link, useNavigate } from '@tanstack/react-router'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { api, type CourseListItem, type RecentLecture } from '../api'
 import UserMenu from '../components/UserMenu'
+import CourseChat from '../components/CourseChat'
 import { getAuthUser } from '../authStore'
 
 const COLORS = [
@@ -177,6 +178,7 @@ function CourseRow({ course }: { course: CourseListItem }) {
 
 export default function HomePage() {
   const [showNew, setShowNew] = useState(false)
+  const [chatOpen, setChatOpen] = useState(false)
   const navigate = useNavigate()
   const user = getAuthUser()
 
@@ -199,6 +201,15 @@ export default function HomePage() {
       <nav className="sticky top-0 z-20 bg-white/80 backdrop-blur-md border-b border-gray-100 px-6 h-14 flex items-center justify-between">
         <img src="/logo.png" alt="GraspIt" className="h-8 w-auto" />
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setChatOpen(true)}
+            className="p-2 text-gray-400 hover:text-indigo-600 transition-colors rounded-lg hover:bg-gray-50"
+            title="Chat with your lectures"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+          </button>
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('graspit:search'))}
             className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-sm text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors shadow-sm"
@@ -326,6 +337,7 @@ export default function HomePage() {
       </div>
 
       {showNew && <NewCourseModal onClose={() => setShowNew(false)} />}
+      {chatOpen && <CourseChat onClose={() => setChatOpen(false)} />}
     </div>
   )
 }
