@@ -31,3 +31,15 @@ frontend/.vite/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local working notes (kept on disk, not published)
+CLAUDE.md
+compact_context.md
+COMPACT_CONTEXT.md
+PLAN.md
+Hackathon.pdf
+.claude/
+frontend/.env.production
+
+# Django
+backend/brainjam/staticfiles/

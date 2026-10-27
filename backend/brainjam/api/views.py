@@ -8,9 +8,10 @@ from django.conf import settings
 from django.http import HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model
-from rest_framework.decorators import api_view, parser_classes, permission_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
 from rest_framework.parsers import MultiPartParser, JSONParser
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, SAFE_METHODS
+from rest_framework.throttling import AnonRateThrottle, UserRateThrottle
 from rest_framework.response import Response
 from rest_framework import status
 from django.db.models import F, Max
@@ -29,6 +30,21 @@ import io
 import genanki
 
 User = get_user_model()
+
+
+class AIRateThrottle(UserRateThrottle):
+    """Per-user cap on requests that call Gemini/Groq. Reads don't count."""
+    scope = 'ai'
+
+    def allow_request(self, request, view):
+        if request.method in SAFE_METHODS:
+            return True
+        return super().allow_request(request, view)
+
+
+class AuthRateThrottle(AnonRateThrottle):
+    """Per-IP cap on register/login, against signup spam and password guessing."""
+    scope = 'auth'
 
 _SYSTEM_PROMPT = (
     'You are a study assistant. Given a lecture transcript and optional context materials '
@@ -630,6 +646,7 @@ def _seed_demo_data(user):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([AuthRateThrottle])
 def register(request):
     email = (request.data.get('email') or '').strip().lower()
     username = (request.data.get('username') or '').strip()
@@ -651,6 +668,7 @@ def register(request):
 
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@throttle_classes([AuthRateThrottle])
 def login_view(request):
     from django.contrib.auth import authenticate
     email = (request.data.get('email') or '').strip().lower()
@@ -680,6 +698,7 @@ def logout_view(request):
 
 @api_view(['POST'])
 @parser_classes([MultiPartParser])
+@throttle_classes([AIRateThrottle])
 def process(request):
     audio_file = request.FILES.get('audio')
     image_files = request.FILES.getlist('images')
@@ -1119,6 +1138,7 @@ def lecture_detail(request, pk):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([AIRateThrottle])
 def lecture_regenerate(request, pk):
     lecture = get_object_or_404(Lecture, pk=pk, course__user=request.user)
     if not lecture.transcript:
@@ -1218,6 +1238,7 @@ def lecture_flashcard_create(request, pk):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([AIRateThrottle])
 def lecture_append(request, pk):
     """Process new audio/images/files and append the results to an existing lecture."""
     lecture = get_object_or_404(Lecture, pk=pk, course__user=request.user)
@@ -1404,6 +1425,7 @@ _EXAM_PROMPT = (
 
 @api_view(['GET', 'POST', 'PATCH'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([AIRateThrottle])
 def course_exam(request, pk):
     course = get_object_or_404(Course, pk=pk, user=request.user)
 
@@ -1594,6 +1616,7 @@ def _build_course_context(course):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@throttle_classes([AIRateThrottle])
 def course_chat(request, pk):
     course = get_object_or_404(Course, pk=pk, user=request.user)
     messages = request.data.get('messages', [])

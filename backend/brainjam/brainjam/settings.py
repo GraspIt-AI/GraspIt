@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 import os
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -23,10 +24,15 @@ load_dotenv(BASE_DIR.parent.parent / '.env')
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-k1eub2snh&!%i=e9$bbl8#fiq6+=+!xz#o-lh!*9uy7grmp1zl')
+DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 
-DEBUG = os.environ.get('DEBUG', 'True') == 'True'
+# SECURITY WARNING: keep the secret key used in production secret!
+# Required outside DEBUG — it signs the JWTs, so a known default would let anyone forge logins.
+SECRET_KEY = os.environ.get('SECRET_KEY')
+if not SECRET_KEY:
+    if not DEBUG:
+        raise ImproperlyConfigured('Set SECRET_KEY in .env (or DEBUG=True for local development).')
+    SECRET_KEY = 'dev-only-insecure-key-never-deploy'
 
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
 
@@ -57,6 +63,11 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
     ],
+    # Every AI call spends the deployer's Gemini/Groq quota — cap it per user.
+    'DEFAULT_THROTTLE_RATES': {
+        'ai': os.environ.get('AI_RATE_LIMIT', '60/hour'),
+        'auth': os.environ.get('AUTH_RATE_LIMIT', '20/hour'),
+    },
 }
 
 from datetime import timedelta
