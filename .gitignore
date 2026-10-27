@@ -43,3 +43,7 @@ frontend/.env.production
 
 # Django
 backend/brainjam/staticfiles/
+
+# Local run logs
+.polish-*.log
+.polish/
