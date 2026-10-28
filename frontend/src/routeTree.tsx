@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components -- route config; the param wrappers need the
+   typed route objects defined here. Editing this file just triggers a full reload instead of a hot swap. */
 import { createRootRoute, createRoute, redirect } from '@tanstack/react-router'
 import HomePage from './routes/home'
 import RecordPage from './routes/index'

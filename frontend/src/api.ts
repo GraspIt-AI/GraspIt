@@ -118,7 +118,7 @@ export async function streamCourseChat(
         const parsed = JSON.parse(payload)
         if (parsed.error) { onError(parsed.error); return }
         if (parsed.text) onChunk(parsed.text)
-      } catch {}
+      } catch { /* partial or non-JSON line: skip it */ }
     }
   }
 }

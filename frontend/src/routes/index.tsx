@@ -5,11 +5,12 @@ import AudioRecorder from '../components/AudioRecorder'
 import PhotoCapture from '../components/PhotoCapture'
 import ContextFiles from '../components/ContextFiles'
 import UserMenu from '../components/UserMenu'
-import { setResults } from '../store'
+import { setResults, type LectureResults } from '../store'
 import { getAccessToken } from '../authStore'
 import { API_BASE } from '../api'
 
 type LoadingStep = 'idle' | 'uploading' | 'transcribing' | 'generating'
+type AudioResult = LectureResults & { _audioFile: string }
 
 const STEP_LABELS: Record<Exclude<LoadingStep, 'idle'>, string> = {
   uploading: 'Uploading',
@@ -100,7 +101,7 @@ export default function RecordPage() {
     let shouldNavigate = false
     try {
       const token = getAccessToken()
-      const allResults: Array<any> = []
+      const allResults: AudioResult[] = []
 
       // Process each audio file sequentially
       // First audio gets all context; subsequent audios are lighter
@@ -131,7 +132,7 @@ export default function RecordPage() {
         }
         const data = JSON.parse(text) as { error?: string } & Record<string, unknown>
         if (data.error) throw new Error(data.error)
-        allResults.push({ ...data, _audioFile: filename })
+        allResults.push({ ...(data as unknown as LectureResults), _audioFile: filename })
       }
 
       // If no audio files, process with just photos/context files
@@ -178,7 +179,7 @@ export default function RecordPage() {
     if (shouldNavigate) navigate({ to: '/results' })
   }
 
-  function combineResults(results: Array<any>) {
+  function combineResults(results: AudioResult[]) {
     // Combine multiple API results into a single result
     const transcriptParts = results.map((r, i) => `Part ${i + 1} — ${r._audioFile}\n${r.transcript}`).join('\n\n')
     const flashcards = results.flatMap((r) => r.flashcards || [])

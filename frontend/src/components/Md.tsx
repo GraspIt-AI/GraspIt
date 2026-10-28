@@ -1,4 +1,4 @@
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { type Options } from 'react-markdown'
 import remarkMath from 'remark-math'
 import rehypeKatex from 'rehype-katex'
 import 'katex/dist/katex.min.css'
@@ -8,8 +8,8 @@ interface Props {
   className?: string
 }
 
-const REMARK_PLUGINS = [remarkMath] as any
-const REHYPE_PLUGINS = [rehypeKatex] as any
+const REMARK_PLUGINS: Options['remarkPlugins'] = [remarkMath]
+const REHYPE_PLUGINS: Options['rehypePlugins'] = [rehypeKatex]
 
 export default function Md({ children, className }: Props) {
   return (

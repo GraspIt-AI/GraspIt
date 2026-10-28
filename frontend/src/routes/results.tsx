@@ -157,10 +157,12 @@ export default function ResultsPage() {
 
   useEffect(() => { savedRef.current = saved }, [saved])
 
+  const { triggerPrint, printPortal } = usePrintNotes(state?.title ?? 'Your Lecture', state?.notes ?? '')
+
   useEffect(() => {
     if (!state?.flashcards?.length) return
     api.courses.default().then((c) => { defaultCourseIdRef.current = c.id }).catch(() => {})
-  }, [])
+  }, [state?.flashcards?.length])
 
   const flashcardsForKey = state?.flashcards ?? []
   const handleKey = useCallback((e: KeyboardEvent) => {
@@ -175,7 +177,7 @@ export default function ResultsPage() {
       e.preventDefault()
       setCardFlipped((f) => !f)
     }
-  }, [tab, flashcardsForKey.length, cardFlipped])
+  }, [tab, flashcardsForKey.length])
 
   useEffect(() => {
     window.addEventListener('keydown', handleKey)
@@ -201,6 +203,8 @@ export default function ResultsPage() {
         keepalive: true,
       }).catch(() => {})
     }
+    // Unmount only: with deps, the cleanup would fire (and save a lecture) every time state changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   if (!state?.flashcards || state.flashcards.length === 0) {
@@ -228,7 +232,6 @@ export default function ResultsPage() {
 
   const { flashcards, notes, transcript: rawTranscript, title = 'Your Lecture', summary = '', tags = [] } = state
   const transcript = editedTranscript ?? rawTranscript
-  const { triggerPrint, printPortal } = usePrintNotes(title, notes)
 
   function copyNotes() {
     navigator.clipboard.writeText(notes).then(() => {

@@ -16,37 +16,26 @@ interface Props {
 
 const STORAGE_KEY = (id: number) => `graspit_chat_${id}`
 
+function loadMessages(id: number): Message[] {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY(id))
+    return saved ? JSON.parse(saved) : []
+  } catch {
+    return []
+  }
+}
+
 export default function CourseChat({ courseId: initialCourseId, courseName: initialCourseName, onClose }: Props) {
   const [activeCourseId, setActiveCourseId] = useState<number | null>(initialCourseId ?? null)
   const [activeCourseName, setActiveCourseName] = useState<string | null>(initialCourseName ?? null)
 
   const picking = activeCourseId === null
 
-  const [messages, setMessages] = useState<Message[]>(() => {
-    if (!initialCourseId) return []
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY(initialCourseId))
-      return saved ? JSON.parse(saved) : []
-    } catch {
-      return []
-    }
-  })
+  const [messages, setMessages] = useState<Message[]>(() => (initialCourseId ? loadMessages(initialCourseId) : []))
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-
-  // Load saved messages when a course is picked
-  useEffect(() => {
-    if (activeCourseId && initialCourseId == null) {
-      try {
-        const saved = localStorage.getItem(STORAGE_KEY(activeCourseId))
-        setMessages(saved ? JSON.parse(saved) : [])
-      } catch {
-        setMessages([])
-      }
-    }
-  }, [activeCourseId])
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -56,7 +45,7 @@ export default function CourseChat({ courseId: initialCourseId, courseName: init
     if (!streaming && activeCourseId) {
       try {
         localStorage.setItem(STORAGE_KEY(activeCourseId), JSON.stringify(messages))
-      } catch {}
+      } catch { /* storage full or blocked: chat still works, just isn't kept */ }
     }
   }, [messages, streaming, activeCourseId])
 
@@ -73,6 +62,7 @@ export default function CourseChat({ courseId: initialCourseId, courseName: init
   function selectCourse(id: number, name: string) {
     setActiveCourseId(id)
     setActiveCourseName(name)
+    setMessages(loadMessages(id))
   }
 
   async function send(text: string) {

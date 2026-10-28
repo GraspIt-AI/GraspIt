@@ -257,7 +257,8 @@ export default function TopicPage({ courseId, tag }: Props) {
   }, [cachedExam])
 
   function normalizeQuestions(qs: ExamQuestion[]): ExamQuestion[] {
-    return qs.map((q: any) => (q.type ? q : { ...q, type: 'mcq' })) as ExamQuestion[]
+    // Exams cached before the `type` field existed are all multiple choice.
+    return qs.map((q) => (q.type ? q : ({ ...(q as object), type: 'mcq' } as ExamQuestion)))
   }
 
   const examMutation = useMutation({
