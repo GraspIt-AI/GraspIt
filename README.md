@@ -10,6 +10,11 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/GraspIt-AI/GraspIt/actions/workflows/ci.yml"><img src="https://github.com/GraspIt-AI/GraspIt/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
+</p>
+
+<p align="center">
   <img src="docs/demo.gif" width="860" alt="GraspIt demo: browsing a course, flipping flashcards, reading notes and taking a topic exam">
 </p>
 
@@ -116,7 +121,13 @@ Built in a weekend for BrainJam 2026 at the University of New Orleans by:
 
 - **Enrique Hernández**: [@Enrikkk](https://github.com/Enrikkk)
 - **Ayush Raj Dahal**: [@ayushrajdahal](https://github.com/ayushrajdahal)
-- **Cosme**: [@Boisset-C](https://github.com/Boisset-C)
+- **Cosme Boisset**: [@Boisset-C](https://github.com/Boisset-C)
+
+<p align="center">
+  <img src="docs/brainjam-win.jpg" width="600" alt="Cosme and Enrique on stage at BrainJam 2026, holding up a laptop running GraspIt">
+  <br>
+  <sub>Cosme and Enrique presenting GraspIt at BrainJam 2026.</sub>
+</p>
 
 ## License
 
